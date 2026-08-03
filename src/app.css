@@ -1,0 +1,124 @@
+/* ----------------------------------------------------------------------------
+   MTUI overrides — bottom tab bar at every width, matching transcribe.
+
+   MTUI hardcodes the tab bar below 768px and a 5rem side rail at or above it
+   (layout.css:91) with no knob to choose. Until the library grows one (see
+   fixes/MTUI-SHELL-NAV-FIX-PROMPT.md) this is the only place mp3fy writes
+   layout CSS. Ported from transcribe's src/app.css, adapted for two tabs.
+
+   Selectors are one specificity step above MTUI's (body.shell vs .shell) so
+   the overrides don't depend on stylesheet order. `body.shell > .shell-nav`
+   would not match: SvelteKit renders the app inside a display:contents
+   wrapper, so the nav is a grid item of body but not its element child.
+   -------------------------------------------------------------------------- */
+
+/* 1. tab bar at every width */
+@media (min-width: 768px) {
+	body.shell {
+		grid-template-areas:
+			'header'
+			'content'
+			'nav';
+		grid-template-rows: auto 1fr auto;
+		grid-template-columns: 1fr;
+	}
+
+	body.shell .shell-nav {
+		flex-direction: row;
+		inline-size: auto;
+	}
+}
+
+/* 2. wider, visibly pressable tabs (tones and states are MTUI's own:
+      resting/hover use the well tones, the current tab mirrors
+      .chip[aria-pressed="true"]) */
+body.shell .shell-nav {
+	justify-content: center;
+	gap: var(--sp-8);
+	padding-inline: var(--pad);
+	padding-block: var(--sp-8);
+	padding-block-end: calc(var(--sp-8) + env(safe-area-inset-bottom, 0px));
+}
+
+body.shell .shell-nav > * {
+	/* Fill the bar, but stop so the four tabs plus the three gaps between them
+	   span exactly the 40rem content column above. */
+	flex: 1 1 0;
+	max-inline-size: calc((40rem - 3 * var(--sp-8)) / 4);
+	padding-block: var(--sp-8);
+	background: var(--surface-2);
+}
+
+body.shell .shell-nav > *:hover {
+	background: var(--surface-3);
+}
+
+body.shell .shell-nav > [aria-current]:not([aria-current='false']) {
+	background: var(--accent-tint);
+	color: var(--accent-text);
+}
+
+/* On phones the bar goes quieter: no tonal pills on resting tabs — every
+   tab keeps its label, but only the active one wears the accent pill. */
+@media (max-width: 767.98px) {
+	body.shell .shell-nav > *,
+	body.shell .shell-nav > *:hover {
+		background: none;
+	}
+
+	body.shell .shell-nav > [aria-current]:not([aria-current='false']) {
+		background: var(--accent-tint);
+	}
+}
+
+/* 5. MTUI bug: `.alert { background: var(--surface-2) }` is declared AFTER
+   the generic `[data-status="danger"]` pair at equal specificity, so status
+   alerts silently render neutral. Reassert the semantic pair; see
+   fixes/MTUI-ALERT-STATUS-FIX-PROMPT.md. */
+body .alert[data-status='success'] { background: var(--success-tint); color: var(--success-text); }
+body .alert[data-status='warning'] { background: var(--warning-tint); color: var(--warning-text); }
+body .alert[data-status='danger'] { background: var(--danger-tint); color: var(--danger-text); }
+body .alert[data-status='info'] { background: var(--info-tint); color: var(--info-text); }
+
+/* 6. Segmented labels at control size (15px) wrap inside their pill on a
+   phone — "Most played" broke to two lines and pushed the well taller than
+   the row beside it. Drop to label size and refuse the wrap; three or four
+   segments then fit any width the app opens at. */
+body .segmented span {
+	font-size: var(--fs-label);
+	padding-inline: var(--sp-8);
+	white-space: nowrap;
+}
+
+/* 7. MTUI bug: js/menu.js anchors a popover by writing `left`, but the UA's
+   popover rules leave `right: 0` in place. Left + right + a definite width is
+   over-constrained, and CSS resolves that by dropping `left` when the
+   direction is RTL — so in Arabic every anchored menu snaps to the opposite
+   edge of the screen instead of sitting under its trigger. Neutralising the
+   inline-end edge lets the script's `left` win in both directions. See
+   fixes/MTUI-MENU-RTL-ANCHOR-FIX-PROMPT.md. */
+html[dir='rtl'] .menu[popover] {
+	right: auto;
+}
+
+/* 3. keep content clear of the cutout when a phone is turned sideways */
+body.shell .screen-stack {
+	padding-inline: max(var(--pad), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+}
+
+/* 4. buy back vertical space on a phone in landscape */
+@media (max-height: 480px) {
+	body.shell .shell-nav {
+		padding-block: var(--sp-4);
+		padding-block-end: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+	}
+
+	body.shell .shell-nav > * {
+		padding-block: var(--sp-4);
+	}
+
+	body.shell .screen-stack {
+		padding-block: var(--sp-8);
+		gap: var(--sp-12);
+	}
+}

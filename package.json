@@ -1,0 +1,49 @@
+{
+	"name": "mp3fy",
+	"version": "0.1.0",
+	"description": "Turn any video link into a local audio file, powered by yt-dlp",
+	"license": "MIT",
+	"private": true,
+	"type": "module",
+	"keywords": [
+		"yt-dlp",
+		"audio",
+		"mp3",
+		"downloader",
+		"offline",
+		"sveltekit",
+		"tauri"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"packageManager": "pnpm@11.3.0",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"tauri": "tauri",
+		"prepare": "svelte-kit sync || echo ''",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-static": "^3.0.10",
+		"@sveltejs/kit": "^2.63.0",
+		"@sveltejs/vite-plugin-svelte": "^7.1.2",
+		"@tauri-apps/cli": "^2.11.4",
+		"@types/node": "^26.1.2",
+		"svelte": "^5.56.1",
+		"svelte-check": "^4.6.0",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.16"
+	},
+	"dependencies": {
+		"@tauri-apps/api": "^2.11.1",
+		"@tauri-apps/plugin-clipboard-manager": "^2.3.0",
+		"@tauri-apps/plugin-deep-link": "^2.4.9",
+		"@tauri-apps/plugin-dialog": "^2.7.2",
+		"@tauri-apps/plugin-opener": "^2.5.0",
+		"morethanui": "^1.0.0"
+	}
+}

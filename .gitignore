@@ -1,0 +1,15 @@
+node_modules/
+.svelte-kit/
+build/
+dist/
+.DS_Store
+.env
+.env.*
+!.env.example
+.playwright/
+.playwright-mcp/
+vite.config.ts.timestamp-*
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
