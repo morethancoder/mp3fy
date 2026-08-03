@@ -46,6 +46,7 @@ pub fn run() {
             tools::update_ytdlp,
             tools::fetch_info,
             tools::downloads_folder,
+            tools::take_shared_link,
             download::start_download,
             download::cancel_download,
             convert::convert_file,

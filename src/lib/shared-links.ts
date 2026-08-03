@@ -21,7 +21,7 @@
  */
 
 import { goto } from '$app/navigation';
-import { isTauri, logEvent } from './api';
+import { isTauri, logEvent, takeSharedLink } from './api';
 import { startWithUrl } from './downloads.svelte';
 import { m } from './i18n.svelte';
 
@@ -123,5 +123,23 @@ export async function initSharedLinks(): Promise<void> {
 		if (launched?.length) accept(launched);
 	} catch (e) {
 		logEvent('share', `could not read the launch link: ${e}`);
+	}
+
+	// Android's share sheet sends plain text, not a URL to open, so it never
+	// reaches the deep-link plugin. That text waits on the native side; we
+	// collect it now and again whenever the app comes back to the front,
+	// which is exactly when a share that launched it has just landed.
+	await collectShared();
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'visible') void collectShared();
+	});
+}
+
+async function collectShared(): Promise<void> {
+	try {
+		const shared = await takeSharedLink();
+		if (shared) accept([shared]);
+	} catch (e) {
+		logEvent('share', `could not read the shared text: ${e}`);
 	}
 }

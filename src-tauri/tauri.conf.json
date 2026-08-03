@@ -31,7 +31,12 @@
 		"deep-link": {
 			"desktop": {
 				"schemes": ["mp3fy"]
-			}
+			},
+			"mobile": [
+				{
+					"scheme": ["mp3fy"]
+				}
+			]
 		}
 	},
 	"bundle": {

@@ -1,7 +1,9 @@
 package com.morethancoder.mp3fy
 
 import android.app.Activity
+import android.content.Intent
 import android.os.Environment
+import android.webkit.WebView
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -48,6 +50,37 @@ class CancelArgs {
 @TauriPlugin
 class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
     private var started = false
+
+    /**
+     * A link someone shared into mp3fy from another app, waiting to be
+     * collected. The share sheet delivers ACTION_SEND — which the deep-link
+     * plugin does not handle, since it is not a URL open — so it is picked up
+     * here and the frontend asks for it on launch and on every resume.
+     */
+    private var sharedText: String? = null
+
+    override fun load(webView: WebView) {
+        takeShare(activity.intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        takeShare(intent)
+    }
+
+    private fun takeShare(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        sharedText = text
+    }
+
+    /** Hand over the pending shared text, once. */
+    @Command
+    fun sharedLink(invoke: Invoke) {
+        val ret = JSObject()
+        ret.put("text", sharedText)
+        sharedText = null
+        invoke.resolve(ret)
+    }
 
     /** Unpacks the engine on first use; later calls are cheap. */
     private fun start() {

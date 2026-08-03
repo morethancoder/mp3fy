@@ -114,7 +114,10 @@ export const ar: Messages = {
 		converting: 'جارٍ التحويل…',
 		preparing: 'جارٍ التجهيز…',
 		failed: 'فشل التحويل',
-		pickerTitle: 'اختر ملف فيديو أو صوت'
+		pickerTitle: 'اختر ملف فيديو أو صوت',
+		notOnAndroid: 'غير متاح على أندرويد بعد',
+		notOnAndroidBody:
+			'تحويل ملف موجود على جهازك متاح على سطح المكتب فقط حالياً. أما التنزيل من رابط — والتحويل أثناءه — فيعمل هنا.'
 	},
 
 	settings: {

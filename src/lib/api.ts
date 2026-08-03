@@ -37,6 +37,14 @@ export interface LogEntry {
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+/**
+ * Android runs the same UI, but not the same engine: yt-dlp and ffmpeg live
+ * inside the APK and are only reachable through the download pipeline, so
+ * converting a file already on the device has nowhere to run yet.
+ */
+export const isAndroid =
+	typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
 /** Newest first. */
 export function getLogs(): Promise<LogEntry[]> {
 	return invoke('get_logs');
@@ -60,6 +68,11 @@ export function fetchInfo(url: string): Promise<VideoInfo> {
 
 export function downloadsFolder(): Promise<string> {
 	return invoke('downloads_folder');
+}
+
+/** A link the system share sheet handed us (Android); reading it clears it. */
+export function takeSharedLink(): Promise<string | null> {
+	return invoke('take_shared_link');
 }
 
 export function startDownload(opts: {

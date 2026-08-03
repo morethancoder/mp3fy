@@ -5,6 +5,7 @@
 	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import {
 		isTauri,
+		isAndroid,
 		convertFile,
 		cancelConvert,
 		onJobEvents,
@@ -113,6 +114,18 @@
 	<h1 class="t-page">{m().convert.title}</h1>
 	<p class="t-secondary">{m().convert.subtitle}</p>
 
+	{#if isAndroid}
+		<!-- Say so plainly rather than offering a picker that leads nowhere:
+		     the Android engine only reaches ffmpeg through a download. -->
+		<div class="alert" data-status="info">
+			<span class="icon" data-icon="info"></span>
+			<div>
+				<span class="alert-title">{m().convert.notOnAndroid}</span>
+				<p>{m().convert.notOnAndroidBody}</p>
+			</div>
+		</div>
+		<a class="btn" data-variant="primary" href="/">{m().nav.home}</a>
+	{:else}
 	<div class="card">
 		<div class="stack" data-gap="16">
 			{#if input}
@@ -229,6 +242,7 @@
 				</div>
 			</div>
 		</div>
+	{/if}
 	{/if}
 </div>
 

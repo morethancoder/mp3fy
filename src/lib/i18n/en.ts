@@ -124,7 +124,10 @@ export const en = {
 		converting: 'Converting…',
 		preparing: 'Getting ready…',
 		failed: 'Conversion failed',
-		pickerTitle: 'Choose a video or audio file'
+		pickerTitle: 'Choose a video or audio file',
+		notOnAndroid: 'Not on Android yet',
+		notOnAndroidBody:
+			'Converting a file already on your device is desktop-only for now. Downloading from a link — and converting it on the way in — works here.'
 	},
 
 	settings: {

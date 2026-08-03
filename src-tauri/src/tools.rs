@@ -170,6 +170,23 @@ pub fn downloads_folder(app: tauri::AppHandle) -> Result<String, String> {
     Ok(downloads_dir(&app)?.to_string_lossy().into_owned())
 }
 
+/// A link shared into the app from elsewhere, if one is waiting.
+///
+/// Only Android has a queue to drain: there the system share sheet delivers a
+/// plain-text intent rather than a URL open, so it cannot ride the deep-link
+/// plugin's event. Everywhere else this is always empty and the `mp3fy://`
+/// path does the work.
+#[tauri::command]
+pub fn take_shared_link(#[allow(unused_variables)] app: tauri::AppHandle) -> Option<String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::android_engine::shared_link(&app)
+    }
+
+    #[cfg(not(target_os = "android"))]
+    None
+}
+
 fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     for entry in std::fs::read_dir(dir).ok()? {
         let path = entry.ok()?.path();

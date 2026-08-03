@@ -127,6 +127,22 @@ where
         .map_err(|e| e.to_string())
 }
 
+#[derive(Deserialize)]
+struct SharedLink {
+    text: Option<String>,
+}
+
+/// The link the system share sheet handed us, if one is waiting. Reading it
+/// clears it, so the same share never starts two downloads.
+pub fn shared_link(app: &AppHandle) -> Option<String> {
+    let res: SharedLink = plugin(app)
+        .ok()?
+        .0
+        .run_mobile_plugin("sharedLink", ())
+        .ok()?;
+    res.text
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CancelArgs {
