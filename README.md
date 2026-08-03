@@ -21,7 +21,7 @@ Grab the file for your platform from the
 | Linux (Debian/Ubuntu) | `mp3fy_<version>_amd64.deb` | `sudo apt install ./mp3fy_*.deb` |
 | Linux (any distro) | `mp3fy_<version>_amd64.AppImage` | `chmod +x` then run |
 | Linux (Fedora/RHEL) | `mp3fy-<version>-1.x86_64.rpm` | `sudo dnf install ./mp3fy-*.rpm` |
-| Android 7+ | `mp3fy_<version>_android.apk` | Sideload; see below |
+| Android 7+ | `mp3fy_<version>_android.apk` | Sideload; see below. `_arm32` / `_x86_64` builds exist for old phones and emulators — you almost certainly want the plain one |
 
 The bundles are **not code-signed** — signing needs paid Apple and Windows
 certificates — so both systems will warn you the first time:

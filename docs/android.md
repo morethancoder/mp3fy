@@ -58,6 +58,11 @@ make android MODE=dev   # run on a connected device or emulator
 engine dependency, `YtdlpPlugin.kt`, the share intent filter and the signing
 config, all of which `tauri android init` would regenerate away.
 
+Releases ship one APK per architecture rather than a universal one: the
+engine's Python and ffmpeg payloads are ~50 MB *per ABI*, so a universal build
+came to 209 MB of which any given phone used a quarter. The unsuffixed
+`mp3fy_<version>_android.apk` is arm64.
+
 R8 is **off** for release builds. Nearly all of a 57 MB APK is native payload,
 so shrinking the Java side saves a couple of megabytes — while the engine,
 Tauri's plugin loading and Jackson are all reflection-driven. With R8 on, the

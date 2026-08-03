@@ -142,16 +142,35 @@ jobs:
           keyAlias=$KEY_ALIAS
           PROPS
 
-      # One universal APK rather than per-ABI splits: it is bigger, but any
-      # phone can install the same file without knowing what a "v8a" is.
-      - name: Build the APK
-        run: pnpm tauri android build --apk
+      # One APK per architecture, not one universal APK. The engine's Python
+      # and ffmpeg payloads are ~50MB *per* ABI, so a universal build is 209MB
+      # of which a phone uses a quarter. The unsuffixed file is the arm64 one,
+      # which is every Android phone worth speaking of; the others are there
+      # for old 32-bit devices and emulators.
+      - name: Build the APKs
+        run: pnpm tauri android build --apk --split-per-abi --target aarch64,armv7,x86_64
 
-      - name: Attach the APK to the release
+      - name: Attach the APKs to the release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*universal-release*.apk" | head -1)
-          test -n "$APK" || { echo "::error::no universal release APK was produced"; exit 1; }
-          cp "$APK" "mp3fy_${GITHUB_REF_NAME#v}_android.apk"
-          gh release upload "$GITHUB_REF_NAME" "mp3fy_${GITHUB_REF_NAME#v}_android.apk" --clobber
+          version="${GITHUB_REF_NAME#v}"
+          out=src-tauri/gen/android/app/build/outputs/apk
+          attach() { # attach <flavor> <suffix>
+            apk=$(find "$out/$1" -name "*release*.apk" 2>/dev/null | head -1)
+            if [ -z "$apk" ]; then
+              echo "::warning::no release APK for $1"
+              return
+            fi
+            name="mp3fy_${version}_android$2.apk"
+            cp "$apk" "$name"
+            gh release upload "$GITHUB_REF_NAME" "$name" --clobber
+            echo "attached $name ($(du -h "$name" | cut -f1))"
+          }
+          attach arm64 ""
+          attach arm "_arm32"
+          attach x86_64 "_x86_64"
+          test -f "mp3fy_${version}_android.apk" || {
+            echo "::error::the arm64 APK is missing — that is the one nearly everyone installs"
+            exit 1
+          }

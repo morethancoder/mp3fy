@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1 — 2026-08-03
+
+- The Android download is a quarter of the size: releases now ship one APK per
+  architecture (57 MB for arm64) instead of one universal 209 MB file
+  containing four copies of Python and ffmpeg.
+
 ## v0.2.0 — 2026-08-03
 
 Android.
