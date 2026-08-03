@@ -84,3 +84,74 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Android is its own build (Gradle + the NDK, not tauri-action) and attaches
+  # to the release the desktop jobs created, so it waits for them.
+  android:
+    needs: bundle
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> $GITHUB_ENV
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: android
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Restore the signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set — the APK would be unsigned and uninstallable"
+            exit 1
+          fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/mp3fy.jks"
+          cat > src-tauri/gen/android/key.properties <<PROPS
+          storeFile=$RUNNER_TEMP/mp3fy.jks
+          password=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          PROPS
+
+      # One universal APK rather than per-ABI splits: it is bigger, but any
+      # phone can install the same file without knowing what a "v8a" is.
+      - name: Build the APK
+        run: pnpm tauri android build --apk
+
+      - name: Attach the APK to the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*universal-release*.apk" | head -1)
+          test -n "$APK" || { echo "::error::no universal release APK was produced"; exit 1; }
+          cp "$APK" "mp3fy_${GITHUB_REF_NAME#v}_android.apk"
+          gh release upload "$GITHUB_REF_NAME" "mp3fy_${GITHUB_REF_NAME#v}_android.apk" --clobber

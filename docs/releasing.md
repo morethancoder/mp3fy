@@ -9,6 +9,7 @@ builds mp3fy on three runners and attaches the bundles to a GitHub Release:
 | `macos-latest` | `.dmg` and `.app.tar.gz`, built `--target universal-apple-darwin` (Apple Silicon + Intel in one file) |
 | `ubuntu-24.04` | `.deb`, `.rpm`, `.AppImage` |
 | `windows-latest` | `.msi` and NSIS `-setup.exe` |
+| `ubuntu-24.04` (android job) | a signed universal `.apk`, uploaded to the release the others created |
 
 ## Cutting one
 
@@ -42,8 +43,15 @@ remote (`gh release delete v0.2.0 --cleanup-tag`), then push it again.
 
 ## Signing
 
-Nothing is signed. macOS bundles get quarantined and Windows shows SmartScreen
-until they are — see the install notes in the [README](../README.md#install).
+**Android is signed**, with a key that is not in the repo: `~/.mp3fy/mp3fy-release.jks`
+locally, and the `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` /
+`ANDROID_KEY_ALIAS` repository secrets in CI. Back that keystore up — Android
+identifies an app by its signing key, so losing it means no future build can
+update an installed mp3fy. See [android.md](android.md#signing).
+
+**Desktop is not signed.** macOS bundles get quarantined and Windows shows
+SmartScreen until they are — see the install notes in the
+[README](../README.md#install).
 Adding signing later means:
 
 - **macOS**: an Apple Developer ID certificate plus notarisation credentials in

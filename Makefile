@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help doctor setup dev web build check icons release clean
+.PHONY: help doctor setup dev web build android check icons release clean
 
 help: ## show this help
 	@awk 'BEGIN {FS = ":.*?## "; printf "\n\033[1mUsage:\033[0m make \033[36m<target>\033[0m\n\n\033[1mTargets:\033[0m\n"} \
@@ -21,6 +21,9 @@ web: ## run only the UI in the browser on :1420
 
 build: ## build the desktop app bundles
 	@pnpm tauri build
+
+android: ## build the Android APK (MODE=debug|release|dev)
+	@bash scripts/android.sh $(MODE)
 
 check: ## type-check the frontend and the Rust backend
 	@pnpm check

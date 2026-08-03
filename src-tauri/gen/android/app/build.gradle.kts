@@ -13,6 +13,17 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Release signing. The keystore never lives in the repo: locally it sits in
+// ~/.mp3fy, in CI it is written from a secret. Without it (a plain clone,
+// `make android`) the release build simply stays unsigned — which is enough
+// to build, and not enough to install.
+val keystoreProperties = Properties().apply {
+    val propFile = rootProject.file("key.properties")
+    if (propFile.exists()) {
+        propFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     compileSdk = 36
     namespace = "com.morethancoder.mp3fy"
@@ -23,6 +34,16 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        create("release") {
+            keystoreProperties["storeFile"]?.let {
+                storeFile = file(it as String)
+                storePassword = keystoreProperties["password"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = (keystoreProperties["keyPassword"] ?: keystoreProperties["password"]) as String
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -37,7 +58,16 @@ android {
             }
         }
         getByName("release") {
-            isMinifyEnabled = true
+            if (keystoreProperties["storeFile"] != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            // R8 off on purpose. Nearly all of this APK is the engine's native
+            // payload (Python, ffmpeg, yt-dlp), so shrinking the Java side
+            // saves a couple of MB out of ~57 — while the engine, Tauri's
+            // plugin loading and Jackson are all reflection-driven, which R8
+            // cannot see. It shipped a build that installed fine and then died
+            // in ZipUtils.unzip with NoClassDefFoundError. Not worth it.
+            isMinifyEnabled = false
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))

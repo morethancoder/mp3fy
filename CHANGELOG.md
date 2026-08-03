@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.2.0 — 2026-08-03
+
+Android.
+
+- The app now runs on Android 7+, with yt-dlp, its Python runtime and ffmpeg
+  shipped inside the APK — Android does not let an app execute anything it
+  downloaded, so the desktop approach could not work there. Downloading,
+  metadata, the library and the player all work; the arguments and the
+  progress parser are still the desktop ones.
+- mp3fy appears in the Android share sheet: share a link from YouTube, a
+  browser or a chat and the download starts on arrival. `mp3fy://` links work
+  too.
+- Converting a local file stays desktop-only for now, and the Android screen
+  says so rather than offering a picker that leads nowhere.
+- Releases now carry a signed universal APK next to the desktop bundles.
+
+There is no iOS build; [docs/ios.md](docs/ios.md) explains what one would
+cost.
+
 ## v0.1.0 — 2026-08-03
 
 First public release. Desktop bundles for macOS (universal), Windows and

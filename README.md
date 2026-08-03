@@ -21,6 +21,7 @@ Grab the file for your platform from the
 | Linux (Debian/Ubuntu) | `mp3fy_<version>_amd64.deb` | `sudo apt install ./mp3fy_*.deb` |
 | Linux (any distro) | `mp3fy_<version>_amd64.AppImage` | `chmod +x` then run |
 | Linux (Fedora/RHEL) | `mp3fy-<version>-1.x86_64.rpm` | `sudo dnf install ./mp3fy-*.rpm` |
+| Android 7+ | `mp3fy_<version>_android.apk` | Sideload; see below |
 
 The bundles are **not code-signed** — signing needs paid Apple and Windows
 certificates — so both systems will warn you the first time:
@@ -32,6 +33,15 @@ certificates — so both systems will warn you the first time:
   *Run anyway*.
 - **Linux (AppImage)**: builds on Ubuntu 24.04, so it needs glibc 2.39 or
   newer. On older distros use the `.deb`/`.rpm`, or build from source.
+- **Android**: it is not on Play, so download the APK on the phone and open
+  it; Android asks once for permission to install from that source. The file
+  is signed with the project's own key — an upgrade over a differently-signed
+  build (e.g. one you built yourself) needs an uninstall first.
+
+There is no iOS build. It is possible — iOS forbids running a separate
+process, but yt-dlp is Python and could be embedded in-process — and the
+blocker is distribution: Apple has no equivalent of "download the file and
+open it". [docs/ios.md](docs/ios.md) has the research.
 
 ### What it downloads on first run
 
@@ -81,8 +91,15 @@ make dev      # run the desktop app with hot reload
 make web      # run only the UI in a browser on :1420
 make check    # type-check the frontend and the Rust backend
 make build    # bundle the app for the current platform
+make android  # build the APK (MODE=debug for a fast arm64 build)
 make release  # tag a version and let CI build every platform
 ```
+
+Android additionally needs a JDK 21, the Android SDK and an NDK; `make
+android` finds them and says what is missing. Unlike desktop, the Android app
+does not download yt-dlp — it ships inside the APK, because Android does not
+allow executing anything from an app's own storage. See
+[docs/android.md](docs/android.md).
 
 Releases are cut by pushing a `v*` tag: GitHub Actions builds macOS, Windows
 and Linux bundles and attaches them to the release. See
