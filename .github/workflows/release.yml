@@ -147,8 +147,9 @@ jobs:
       # of which a phone uses a quarter. The unsuffixed file is the arm64 one,
       # which is every Android phone worth speaking of; the others are there
       # for old 32-bit devices and emulators.
+      # `--target` takes repeated values, not a comma-separated list.
       - name: Build the APKs
-        run: pnpm tauri android build --apk --split-per-abi --target aarch64,armv7,x86_64
+        run: pnpm tauri android build --apk --split-per-abi --target aarch64 --target armv7 --target x86_64
 
       - name: Attach the APKs to the release
         env:
