@@ -143,8 +143,16 @@ pub fn ffmpeg_program(app: &tauri::AppHandle) -> PathBuf {
     managed_ffmpeg(app).unwrap_or_else(|| PathBuf::from("ffmpeg"))
 }
 
-/// All app output lands in one folder the user can find: Downloads/mp3fy.
+/// All app output lands in one folder the user can find: Downloads/mp3fy on
+/// desktop, and on Android wherever the engine is allowed to write.
 pub fn downloads_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    #[cfg(target_os = "android")]
+    {
+        return Ok(PathBuf::from(crate::android_engine::setup(app)?.output_dir));
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
     use tauri::Manager as _;
     let base = app
         .path()
@@ -154,6 +162,7 @@ pub fn downloads_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = base.join("mp3fy");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
+    }
 }
 
 #[tauri::command]
@@ -179,6 +188,20 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 /// none. macOS builds come from evermeet.cx, the rest from yt-dlp's own
 /// FFmpeg-Builds releases.
 pub async fn ensure_ffmpeg(app: &tauri::AppHandle) -> Result<(), String> {
+    // Android ships ffmpeg inside the APK, next to yt-dlp's Python runtime —
+    // there is nothing to fetch, and nowhere to put it if there were.
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "android"))]
+    ensure_ffmpeg_desktop(app).await
+}
+
+#[cfg(not(target_os = "android"))]
+async fn ensure_ffmpeg_desktop(app: &tauri::AppHandle) -> Result<(), String> {
     if let Some(cache) = CACHE.lock().unwrap().as_ref() {
         if cache.ffmpeg {
             return Ok(());
@@ -271,8 +294,14 @@ pub async fn ensure_tools(app: tauri::AppHandle) -> Result<ToolsStatus, String> 
             ffmpeg_available: cache.ffmpeg,
         });
     }
-    let version = ensure_ytdlp(&app).await?;
-    let ffmpeg = ffmpeg_available(&app);
+
+    // On Android "ensure" means unpack what the APK already carries: the
+    // first call costs a moment, and there is never a download.
+    #[cfg(target_os = "android")]
+    let (version, ffmpeg) = (crate::android_engine::setup(&app)?.version, true);
+
+    #[cfg(not(target_os = "android"))]
+    let (version, ffmpeg) = (ensure_ytdlp(&app).await?, ffmpeg_available(&app));
     *CACHE.lock().unwrap() = Some(ToolsCache {
         ytdlp_version: version.clone(),
         ffmpeg,
@@ -286,6 +315,20 @@ pub async fn ensure_tools(app: tauri::AppHandle) -> Result<ToolsStatus, String> 
 
 #[tauri::command]
 pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
+    // Android's yt-dlp updates itself in place through the engine — the copy
+    // in the APK is only ever the starting point.
+    #[cfg(target_os = "android")]
+    {
+        let version = crate::android_engine::update(&app)?;
+        if let Some(cache) = CACHE.lock().unwrap().as_mut() {
+            cache.ytdlp_version = version.clone();
+        }
+        log("tools", format!("yt-dlp update check done: {version}"));
+        return Ok(version);
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
     ensure_ytdlp(&app).await?;
     let path = ytdlp_path(&app)?;
     let out = quiet_command(&path)
@@ -304,6 +347,7 @@ pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
     }
     log("tools", format!("yt-dlp update check done: {version}"));
     Ok(version)
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -316,6 +360,21 @@ pub struct VideoInfo {
 
 #[tauri::command]
 pub async fn fetch_info(app: tauri::AppHandle, url: String) -> Result<VideoInfo, String> {
+    #[cfg(target_os = "android")]
+    {
+        let info = crate::android_engine::info(&app, &url)?;
+        return Ok(VideoInfo {
+            title: info.title.unwrap_or_else(|| "Unknown".into()),
+            uploader: info.uploader,
+            // The engine reports 0 for streams with no known length; the UI
+            // wants "unknown", not "zero seconds".
+            duration: info.duration.filter(|d| *d > 0.0),
+            thumbnail: info.thumbnail,
+        });
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
     ensure_ytdlp(&app).await?;
     let path = ytdlp_path(&app)?;
     let out = quiet_command(&path)
@@ -334,4 +393,5 @@ pub async fn fetch_info(app: tauri::AppHandle, url: String) -> Result<VideoInfo,
         duration: json["duration"].as_f64(),
         thumbnail: json["thumbnail"].as_str().map(String::from),
     })
+    }
 }

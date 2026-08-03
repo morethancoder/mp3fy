@@ -1,3 +1,5 @@
+#[cfg(target_os = "android")]
+mod android_engine;
 mod convert;
 mod download;
 mod logs;
@@ -26,6 +28,11 @@ pub fn run() {
             let _ = window.set_focus();
         }
     }));
+
+    // Android carries its own yt-dlp instead of downloading one; the engine
+    // plugin is the bridge to it.
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_engine::init());
 
     builder
         .plugin(tauri_plugin_deep_link::init())

@@ -12,4 +12,8 @@ vite.config.ts.timestamp-*
 
 # Tauri
 src-tauri/target/
-src-tauri/gen/
+src-tauri/gen/schemas/
+src-tauri/gen/apple/
+# gen/android IS committed: it carries the engine wiring (youtubedl-android
+# deps, the yt-dlp plugin, the share intent filters), which `tauri android
+# init` would otherwise regenerate away.

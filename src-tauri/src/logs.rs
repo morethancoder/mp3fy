@@ -29,12 +29,36 @@ pub fn log(source: &str, message: impl Into<String>) {
     // Also to stderr: a GUI launch throws it away, but running the binary
     // from a terminal is how you watch the app work without the Logs screen.
     eprintln!("[{}] {}", entry.source, entry.message);
+    // Android drops stderr on the floor, so the same line goes to logcat,
+    // where `adb logcat -s mp3fy` is the equivalent of that terminal.
+    #[cfg(target_os = "android")]
+    android_log(&entry.source, &entry.message);
 
     let mut logs = LOGS.lock().unwrap();
     if logs.len() >= CAP {
         logs.pop_front();
     }
     logs.push_back(entry);
+}
+
+/// Write one line to Android's logcat under the `mp3fy` tag. liblog is
+/// already linked into the app (the webview needs it), so this costs nothing
+/// but the declaration.
+#[cfg(target_os = "android")]
+fn android_log(source: &str, message: &str) {
+    // `c_char` rather than `i8`: on aarch64-android a C char is unsigned.
+    use std::ffi::{c_char, CString};
+    const INFO: i32 = 4;
+    unsafe extern "C" {
+        fn __android_log_write(prio: i32, tag: *const c_char, text: *const c_char) -> i32;
+    }
+    let (Ok(tag), Ok(text)) = (CString::new("mp3fy"), CString::new(format!("[{source}] {message}")))
+    else {
+        return; // an interior NUL in a yt-dlp line is not worth caring about
+    };
+    unsafe {
+        __android_log_write(INFO, tag.as_ptr(), text.as_ptr());
+    }
 }
 
 /// Newest first — the order the Logs screen shows them.
