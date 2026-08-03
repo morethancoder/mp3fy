@@ -146,6 +146,10 @@ export async function startJob(): Promise<void> {
 export function startWithUrl(url: string): 'started' | 'queued' {
 	const link = url.trim();
 	if (download.busy) {
+		// A launch-by-link can be delivered twice — once as the event, once by
+		// `getCurrent` — and re-sharing what is already downloading means the
+		// same thing: this is the running job, not a second one.
+		if (link === download.url) return 'started';
 		if (!download.queued.includes(link)) download.queued.push(link);
 		return 'queued';
 	}
