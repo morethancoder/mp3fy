@@ -120,6 +120,8 @@ fn job_args(dest: &std::path::Path, format: &str, quality: &str, kind: &str) -> 
 struct Reading {
     final_path: Option<String>,
     fetching_announced: bool,
+    /// yt-dlp's own last complaint, for when the engine's failure is mute.
+    last_error: Option<String>,
 }
 
 /// Turn one output line into the events the UI listens for. Shared by the
@@ -127,6 +129,9 @@ struct Reading {
 fn read_line(app: &AppHandle, line: &str, state: &mut Reading) {
     if let Some(path) = parse_destination(line) {
         state.final_path = Some(path);
+    }
+    if line.starts_with("ERROR") {
+        state.last_error = Some(line.trim().to_string());
     }
     if line.starts_with("[download]") {
         if line.contains('%') {
@@ -215,7 +220,10 @@ fn start_on_android(app: AppHandle, mut args: Vec<String>, url: String) -> Resul
             log("yt-dlp", line.clone());
             read_line(app, &line, &mut reading.lock().unwrap());
         });
-        let path = reading.lock().unwrap().final_path.clone();
+        let (path, last_error) = {
+            let reading = reading.lock().unwrap();
+            (reading.final_path.clone(), reading.last_error.clone())
+        };
         match result {
             Ok(()) => {
                 let path = path.unwrap_or_default();
@@ -223,6 +231,13 @@ fn start_on_android(app: AppHandle, mut args: Vec<String>, url: String) -> Resul
                 emit_done(&app2, "download:done", path);
             }
             Err(message) => {
+                // The engine's own error is often empty — it fails the call
+                // without saying why. yt-dlp already said why, on the line
+                // before it gave up.
+                let message = match message.trim() {
+                    "" => last_error.unwrap_or_else(|| "the download failed".into()),
+                    m => m.to_string(),
+                };
                 log("download", format!("failed: {message}"));
                 let _ = app2.emit("download:error", message);
             }

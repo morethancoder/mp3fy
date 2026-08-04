@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.2.2 — 2026-08-04
+
+Android fixes found by testing the shipped APK rather than a dev build.
+
+- **Sharing a link no longer kills its own download.** Sharing launches the
+  app, so the startup yt-dlp update check and the download it just started ran
+  at the same time — and on Android yt-dlp is a zip Python imports lazily, so
+  rewriting it mid-download killed it (`zipimport.ZipImportError: bad local
+  file header`). The update now defers while a download is running.
+- **Failures say what went wrong.** The engine often rejects a download
+  without a message; yt-dlp's own last error is used instead of an empty
+  string.
+- ffmpeg and ffprobe are exposed under the names yt-dlp looks for. It ships
+  them as `libffmpeg.so` / `libffprobe.so` — the only place Android allows
+  executables — and yt-dlp found ffmpeg but never ffprobe, which extracting
+  audio needs.
+
+**Known limitation:** on devices with 16 KB memory pages (newer Android 15+
+hardware), the bundled ffmpeg cannot load at all — its libraries are 4 KB
+aligned and the linker refuses them. The download completes and conversion
+fails. Most phones in use today have 4 KB pages and are unaffected.
+
 ## v0.2.1 — 2026-08-03
 
 - The Android download is a quarter of the size: releases now ship one APK per
