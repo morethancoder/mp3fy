@@ -43,6 +43,7 @@ pub fn run() {
         .manage(ActiveConvert::default())
         .invoke_handler(tauri::generate_handler![
             tools::ensure_tools,
+            tools::tools_report,
             tools::update_ytdlp,
             tools::fetch_info,
             tools::downloads_folder,

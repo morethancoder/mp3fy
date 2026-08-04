@@ -1,6 +1,7 @@
 package com.morethancoder.mp3fy
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Environment
 import android.webkit.WebView
@@ -47,9 +48,26 @@ class CancelArgs {
     var processId: String = "mp3fy"
 }
 
+@InvokeArg
+class InstallArgs {
+    /** A yt-dlp release file Rust has already downloaded. */
+    lateinit var path: String
+
+    /** The release tag it came from — what the app reports as the version. */
+    var version: String = ""
+}
+
 @TauriPlugin
 class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
+    private companion object {
+        /** Where the version of an installed yt-dlp is remembered. */
+        const val VERSION_KEY = "ytdlpVersion"
+    }
+
     private var started = false
+
+    /** Cache for [version] — the preference read is cheap, this is cheaper. */
+    private var knownVersion: String? = null
 
     /**
      * Held while anything replaces the yt-dlp package on disk, and briefly
@@ -186,36 +204,126 @@ class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
             ret.put("outputDir", outputDir().absolutePath)
             invoke.resolve(ret)
         } catch (e: Exception) {
-            invoke.reject(e.message ?: "the download engine could not start")
+            invoke.reject(describe(e, "the download engine could not start"))
         }
     }
 
+    /**
+     * Put a yt-dlp that Rust downloaded in place of the one in use.
+     *
+     * The engine library ships its own updater, but that one asks
+     * api.github.com which release is current — an unauthenticated call, and
+     * therefore 60 an hour *per IP*. Phones share carrier IPs with thousands of
+     * strangers, so the answer is frequently 403 and the update simply fails,
+     * which strands the app on the yt-dlp the APK was built with. Rust fetches
+     * the release file directly instead (no API, no quota) and hands it here,
+     * so this only has to do what the library's updater does with it: drop it
+     * in the engine's yt-dlp directory and re-point the engine at it.
+     */
     @Command
-    fun update(invoke: Invoke) {
+    fun install(invoke: Invoke) {
+        val args = invoke.parseArgs(InstallArgs::class.java)
         thread {
             try {
                 start()
+                val source = File(args.path)
+                if (!source.isFile) {
+                    invoke.reject("the downloaded yt-dlp is missing")
+                    return@thread
+                }
+                var installed = false
                 synchronized(engineLock) {
                     // A download is reading the package we would replace.
-                    // Skipping is right: this runs unattended at launch, and
-                    // the next launch will try again.
+                    // Skipping is right: this also runs unattended at launch,
+                    // and the next launch will try again.
                     if (running.get() == 0) {
-                        YoutubeDL.getInstance().updateYoutubeDL(activity.applicationContext)
+                        val dir = File(
+                            File(activity.applicationContext.noBackupFilesDir, YoutubeDL.baseName),
+                            YoutubeDL.ytdlpDirName
+                        )
+                        dir.mkdirs()
+                        source.copyTo(File(dir, YoutubeDL.ytdlpBin), overwrite = true)
+                        // init_ytdlp keeps whatever is already in the directory
+                        // and only unpacks the copy inside the APK when it finds
+                        // nothing — so this adopts the new file rather than
+                        // overwriting it back.
+                        YoutubeDL.getInstance().init_ytdlp(activity.applicationContext, dir)
+                        rememberVersion(args.version)
+                        installed = true
                     }
                 }
-                invoke.resolve(JSObject().apply { put("version", version()) })
+                source.delete()
+                invoke.resolve(JSObject().apply {
+                    put("version", version())
+                    put("installed", installed)
+                })
             } catch (e: Exception) {
-                invoke.reject(e.message ?: "the update failed")
+                invoke.reject(describe(e, "the update could not be installed"))
             }
         }
     }
 
-    /** What yt-dlp calls itself; the bundled copy only knows its name. */
+    /** What each half of the engine is, and whether it is actually there. */
+    @Command
+    fun status(invoke: Invoke) {
+        thread {
+            try {
+                start()
+                val nativeDir = File(activity.applicationInfo.nativeLibraryDir)
+                invoke.resolve(JSObject().apply {
+                    put("version", version().ifEmpty { probeVersion() })
+                    put("updated", prefs().contains(VERSION_KEY))
+                    put("ffmpeg", File(nativeDir, "libffmpeg.so").isFile)
+                    put("ffprobe", File(nativeDir, "libffprobe.so").isFile)
+                })
+            } catch (e: Exception) {
+                invoke.reject(describe(e, "the download engine could not start"))
+            }
+        }
+    }
+
+    private fun prefs() = activity.getSharedPreferences("mp3fy", Context.MODE_PRIVATE)
+
+    private fun rememberVersion(version: String) {
+        knownVersion = version
+        prefs().edit().putString(VERSION_KEY, version).apply()
+    }
+
+    /**
+     * The version we can state without paying for it: whatever the last
+     * install recorded. Empty means the APK's own copy is still in place —
+     * which knows its version only by being run, so [probeVersion] does that
+     * and nothing on the launch path has to.
+     */
     private fun version(): String {
-        val ctx = activity.applicationContext
-        return YoutubeDL.getInstance().version(ctx)
-            ?: YoutubeDL.getInstance().versionName(ctx)
-            ?: ""
+        knownVersion?.let { return it }
+        val stored = prefs().getString(VERSION_KEY, null)
+        if (stored != null) knownVersion = stored
+        return stored ?: ""
+    }
+
+    /** Ask yt-dlp itself. Costs a Python start, so it is never on a hot path. */
+    private fun probeVersion(): String {
+        return try {
+            val request = YoutubeDLRequest(emptyList()).addCommands(listOf("--version"))
+            val response = YoutubeDL.getInstance().execute(request, "mp3fy-version", false) { _, _, _ -> }
+            response.out.trim().lines().lastOrNull { it.isNotBlank() }?.trim().orEmpty()
+        } catch (e: Exception) {
+            android.util.Log.w("mp3fy", "[engine] could not read the yt-dlp version: ${e.message}")
+            ""
+        }
+    }
+
+    /**
+     * A message worth showing. Plenty of what the engine throws (IOException
+     * from a dead connection, most of what Jackson raises) carries a null
+     * message, and "null" on screen tells nobody anything — the class name at
+     * least names the failure.
+     */
+    private fun describe(e: Exception, fallback: String): String {
+        val message = e.message?.trim()
+        if (!message.isNullOrEmpty()) return message
+        return "$fallback (${e.javaClass.simpleName})"
     }
 
     @Command
@@ -232,7 +340,7 @@ class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
                 ret.put("thumbnail", info.thumbnail)
                 invoke.resolve(ret)
             } catch (e: Exception) {
-                invoke.reject(e.message ?: "could not read the video info")
+                invoke.reject(describe(e, "could not read the video info"))
             }
         }
     }
@@ -276,7 +384,7 @@ class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
                 out.put("output", response.out)
                 invoke.resolve(out)
             } catch (e: Exception) {
-                invoke.reject(e.message ?: "the download failed")
+                invoke.reject(describe(e, "the download failed"))
             }
         }
     }

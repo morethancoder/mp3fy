@@ -101,6 +101,18 @@ html[dir='rtl'] .menu[popover] {
 	right: auto;
 }
 
+/* 8. An accordion sits on --surface, which is exactly what a .card is made
+   of — so inside one, the Options header reads as a line of text rather than
+   something to press, and nothing suggests there is more underneath. Give it
+   the same quiet fill a plain .btn has: clearly a control, clearly not the
+   one that starts the download. */
+body .accordion {
+	background: var(--surface-2);
+}
+body .accordion summary:hover {
+	background: var(--surface-3);
+}
+
 /* 3. keep content clear of the cutout when a phone is turned sideways */
 body.shell .screen-stack {
 	padding-inline: max(var(--pad), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));

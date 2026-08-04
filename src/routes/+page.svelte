@@ -162,7 +162,7 @@
 								{/if}
 							</button>
 							{#if download.url}
-								<button class="btn" data-variant="ghost" data-feedback="tick" onclick={clearJob}>
+								<button class="btn" data-feedback="tick" onclick={clearJob}>
 									<span class="icon" data-icon="x"></span>
 									{m().home.clear}
 								</button>

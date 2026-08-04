@@ -48,17 +48,52 @@ pub fn setup(app: &AppHandle) -> Result<Setup, String> {
         .map_err(|e| e.to_string())
 }
 
-#[derive(Deserialize)]
-pub struct Version {
-    pub version: String,
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallArgs {
+    path: String,
+    version: String,
 }
 
-pub fn update(app: &AppHandle) -> Result<String, String> {
-    let res: Version = plugin(app)?
+#[derive(Deserialize)]
+pub struct Installed {
+    pub version: String,
+    /// False when a download held the engine and the swap was skipped.
+    pub installed: bool,
+}
+
+/// Hand a downloaded yt-dlp to the engine, replacing the one in use.
+pub fn install(app: &AppHandle, path: &str, version: &str) -> Result<Installed, String> {
+    plugin(app)?
         .0
-        .run_mobile_plugin("update", ())
-        .map_err(|e| e.to_string())?;
-    Ok(res.version)
+        .run_mobile_plugin(
+            "install",
+            InstallArgs {
+                path: path.into(),
+                version: version.into(),
+            },
+        )
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Status {
+    pub version: String,
+    /// True once an update replaced the copy that shipped in the APK.
+    pub updated: bool,
+    pub ffmpeg: bool,
+    pub ffprobe: bool,
+}
+
+/// What the engine is made of right now. Costs a yt-dlp start on a fresh
+/// install (nothing else knows the bundled version), so it is only ever
+/// called by the tools screen.
+pub fn status(app: &AppHandle) -> Result<Status, String> {
+    plugin(app)?
+        .0
+        .run_mobile_plugin("status", ())
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]

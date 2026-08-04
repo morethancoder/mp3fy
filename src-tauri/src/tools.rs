@@ -98,6 +98,52 @@ fn binary_version(path: &Path) -> Option<String> {
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// Resolve yt-dlp's "latest" alias to a concrete release without asking the
+/// GitHub API.
+///
+/// The API answer would be nicer to parse, but it is rate limited to 60 calls
+/// an hour *per IP* for unauthenticated callers — and phones sit behind carrier
+/// NAT, sharing one IP with everybody else on the tower, so on mobile data that
+/// quota is routinely already spent by strangers and the call comes back 403.
+/// The plain download alias has no quota at all, and its redirect happens to
+/// name the release: `…/releases/download/<tag>/<asset>`.
+///
+/// Only Android needs this. Desktop asks the binary to update itself, and
+/// `yt-dlp -U` resolves its own release.
+#[cfg(target_os = "android")]
+async fn latest_ytdlp_release(asset: &str) -> Result<(String, String), String> {
+    let alias = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}");
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&alias)
+        .send()
+        .await
+        .map_err(|e| format!("could not reach GitHub: {e}"))?;
+    let location = resp
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    match location {
+        // Second-from-last path segment: the tag yt-dlp released under.
+        Some(url) => {
+            let tag = url
+                .rsplit('/')
+                .nth(1)
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| format!("unexpected release URL: {url}"))?
+                .to_string();
+            Ok((tag, url))
+        }
+        // No redirect means GitHub served the file straight away; the download
+        // still works, we just cannot name the release.
+        None => Ok((String::new(), alias)),
+    }
+}
+
 async fn ensure_ytdlp(app: &tauri::AppHandle) -> Result<String, String> {
     if let Some(cache) = CACHE.lock().unwrap().as_ref() {
         return Ok(cache.ytdlp_version.clone());
@@ -330,18 +376,144 @@ pub async fn ensure_tools(app: tauri::AppHandle) -> Result<ToolsStatus, String> 
     })
 }
 
+/// One line of the tools screen: is this half of the engine there, which copy
+/// of it, and where did it come from.
+#[derive(serde::Serialize)]
+pub struct ToolReport {
+    pub id: &'static str,
+    pub ok: bool,
+    pub version: Option<String>,
+    /// `bundled` | `updated` | `managed` | `system` | `missing` — the screen
+    /// turns this into words, so it stays a stable key here.
+    pub source: &'static str,
+    /// Where it lives, when saying so helps.
+    pub detail: Option<String>,
+}
+
+#[cfg(not(target_os = "android"))]
+fn ffmpeg_version(program: &Path) -> Option<String> {
+    let out = quiet_command(program).arg("-version").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    // "ffmpeg version 7.1 Copyright (c) …" — the build strings after it are
+    // longer than the whole row has space for.
+    text.lines()
+        .next()?
+        .split_whitespace()
+        .nth(2)
+        .map(str::to_string)
+}
+
+/// The state of both tools, probed rather than remembered.
+///
+/// `ensure_tools` answers "can we start a download" from a session cache and
+/// installs what is missing; this answers "what exactly is installed" and
+/// changes nothing — which is what makes it worth showing when a download has
+/// just failed for reasons nobody can see.
 #[tauri::command]
-pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
-    // Android's yt-dlp updates itself in place through the engine — the copy
-    // in the APK is only ever the starting point.
+pub async fn tools_report(app: tauri::AppHandle) -> Result<Vec<ToolReport>, String> {
     #[cfg(target_os = "android")]
     {
-        let version = crate::android_engine::update(&app)?;
-        if let Some(cache) = CACHE.lock().unwrap().as_mut() {
-            cache.ytdlp_version = version.clone();
+        let status = crate::android_engine::status(&app)?;
+        let ffmpeg_ok = status.ffmpeg && status.ffprobe;
+        return Ok(vec![
+            ToolReport {
+                id: "yt-dlp",
+                ok: !status.version.is_empty(),
+                version: (!status.version.is_empty()).then(|| status.version.clone()),
+                source: if status.updated { "updated" } else { "bundled" },
+                detail: None,
+            },
+            ToolReport {
+                id: "ffmpeg",
+                ok: ffmpeg_ok,
+                version: None,
+                source: if ffmpeg_ok { "bundled" } else { "missing" },
+                detail: (!status.ffprobe && status.ffmpeg)
+                    .then(|| "ffprobe is missing".to_string()),
+            },
+        ]);
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let ytdlp = ytdlp_path(&app)?;
+        let ytdlp_version = binary_version(&ytdlp);
+        let ffmpeg = managed_ffmpeg(&app);
+        let ffmpeg_program = ffmpeg.clone().unwrap_or_else(|| PathBuf::from("ffmpeg"));
+        let ffmpeg_version = ffmpeg_version(&ffmpeg_program);
+        Ok(vec![
+            ToolReport {
+                id: "yt-dlp",
+                ok: ytdlp_version.is_some(),
+                version: ytdlp_version.clone(),
+                source: if ytdlp_version.is_some() {
+                    "managed"
+                } else {
+                    "missing"
+                },
+                detail: ytdlp_version
+                    .is_some()
+                    .then(|| ytdlp.to_string_lossy().into_owned()),
+            },
+            ToolReport {
+                id: "ffmpeg",
+                ok: ffmpeg_version.is_some(),
+                version: ffmpeg_version.clone(),
+                source: match (&ffmpeg, &ffmpeg_version) {
+                    (_, None) => "missing",
+                    (Some(_), _) => "managed",
+                    (None, _) => "system",
+                },
+                // Only our own copy has a path worth printing; the system one
+                // is whatever the PATH resolves, and "ffmpeg" says nothing.
+                detail: ffmpeg
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
+            },
+        ])
+    }
+}
+
+#[tauri::command]
+pub async fn update_ytdlp(app: tauri::AppHandle) -> Result<String, String> {
+    // Android cannot run `yt-dlp -U`: the copy in use lives in storage the app
+    // may write but not execute, and it is started by an embedded Python
+    // rather than as a program. So the update is done to it rather than by it —
+    // fetch the release file here and let the engine adopt it.
+    #[cfg(target_os = "android")]
+    {
+        let installed = CACHE
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|c| c.ytdlp_version.clone())
+            .unwrap_or_default();
+        let (version, url) = latest_ytdlp_release("yt-dlp").await?;
+        if !version.is_empty() && version == installed {
+            log("tools", format!("yt-dlp is already {version}"));
+            return Ok(version);
         }
-        log("tools", format!("yt-dlp update check done: {version}"));
-        return Ok(version);
+        let dest = bin_dir(&app)?.join("yt-dlp-download");
+        log("tools", format!("downloading yt-dlp {version} from {url}"));
+        download_file(&url, &dest).await?;
+        let result = crate::android_engine::install(
+            &app,
+            &dest.to_string_lossy(),
+            &version,
+        )?;
+        if let Some(cache) = CACHE.lock().unwrap().as_mut() {
+            cache.ytdlp_version = result.version.clone();
+        }
+        if result.installed {
+            log("tools", format!("yt-dlp updated to {}", result.version));
+        } else {
+            // Deferred, not failed: a download was holding the engine.
+            log("tools", "yt-dlp update deferred — a download is running");
+        }
+        return Ok(result.version);
     }
 
     #[cfg(not(target_os = "android"))]

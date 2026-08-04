@@ -14,6 +14,17 @@ export interface ToolsStatus {
 	ffmpeg_available: boolean;
 }
 
+/** Where a tool came from — `source` in the Rust `ToolReport`. */
+export type ToolSource = 'bundled' | 'updated' | 'managed' | 'system' | 'missing';
+
+export interface ToolReport {
+	id: 'yt-dlp' | 'ffmpeg';
+	ok: boolean;
+	version: string | null;
+	source: ToolSource;
+	detail: string | null;
+}
+
 export type Stage = 'preparing' | 'fetching' | 'downloading' | 'converting';
 
 export interface ProgressEvent {
@@ -56,6 +67,15 @@ export function logEvent(source: string, message: string): void {
 
 export function ensureTools(): Promise<ToolsStatus> {
 	return invoke('ensure_tools');
+}
+
+/**
+ * What is actually installed, probed on the spot. `ensureTools` answers
+ * whether a download can start (and installs what is missing); this one only
+ * looks, which is what makes it safe to open when something has just failed.
+ */
+export function toolsReport(): Promise<ToolReport[]> {
+	return invoke('tools_report');
 }
 
 export function updateYtdlp(): Promise<string> {

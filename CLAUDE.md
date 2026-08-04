@@ -65,7 +65,16 @@ trimmed: no Node-server build target, desktop first.
   localStorage (`src/lib/history.svelte.ts`) with artist/thumbnail (fetched
   in parallel with each download via fetch_info) and play counts.
 - Tool checks are cached per session in `tools::CACHE` — first ensure probes
-  or installs, later downloads start instantly. In-memory logs ring buffer
+  or installs, later downloads start instantly. `tools_report` is the opposite
+  and feeds Settings → Developer → Tools: it probes, installs nothing, and says
+  which copy of each tool is live. Updating yt-dlp on Android is done *to* it,
+  not by it (`-U` can't run from storage Android won't execute): Rust resolves
+  `releases/latest/download/yt-dlp` — the redirect names the tag, so no
+  api.github.com call and none of its 60-per-hour-per-IP quota, which carrier
+  NAT makes a coin flip — and the engine's `install` command swaps the file in.
+  The APK's own yt-dlp is whatever youtubedl-android 0.18.1 shipped
+  (2025.11.12), so without a working update every download 403s eventually.
+  In-memory logs ring buffer
   (`src-tauri/src/logs.rs`) surfaces at Settings → Developer → Logs (/logs);
   frontend errors are forwarded via the log_event command. Every entry is also
   echoed to stderr, which is how you watch a bundled build:

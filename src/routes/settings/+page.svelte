@@ -5,9 +5,11 @@
 	import {
 		isTauri,
 		ensureTools,
+		toolsReport,
 		updateYtdlp,
 		downloadsFolder,
-		type ToolsStatus
+		type ToolsStatus,
+		type ToolReport
 	} from '$lib/api';
 	import {
 		settings,
@@ -22,6 +24,8 @@
 
 	let appVersion = $state('dev');
 	let tools = $state<ToolsStatus | null>(null);
+	let report = $state<ToolReport[] | null>(null);
+	let checking = $state(false);
 	let updating = $state(false);
 	let theme = $state<ThemePreference>('system');
 	let language = $state<AppLanguage>('system');
@@ -32,7 +36,22 @@
 		if (!isTauri) return;
 		appVersion = await getVersion();
 		tools = await ensureTools().catch(() => null);
+		void refreshReport();
 	});
+
+	// Probing yt-dlp on Android means starting it, so this is never awaited by
+	// anything the screen needs in order to paint.
+	async function refreshReport() {
+		checking = true;
+		try {
+			report = await toolsReport();
+		} catch (err) {
+			report = null;
+			window.mtui?.toast(String(err), { kind: 'error' });
+		} finally {
+			checking = false;
+		}
+	}
 
 	function pickTheme(value: ThemePreference) {
 		theme = value;
@@ -50,12 +69,19 @@
 
 	async function checkForUpdates(e: MouseEvent) {
 		const btn = e.currentTarget as HTMLButtonElement;
+		const before = report?.find((t) => t.id === 'yt-dlp')?.version ?? null;
 		updating = true;
 		btn.setAttribute('data-loading', '');
 		try {
 			const version = await updateYtdlp();
 			if (tools) tools.ytdlp_version = version;
-			window.mtui?.toast(m().settings.upToDate(version), { kind: 'success' });
+			window.mtui?.toast(
+				version && version !== before
+					? m().settings.updated(version)
+					: m().settings.upToDate(version),
+				{ kind: 'success' }
+			);
+			await refreshReport();
 		} catch (err) {
 			window.mtui?.toast(String(err), { kind: 'error' });
 		} finally {
@@ -181,21 +207,6 @@
 	<h2 class="t-section">{m().settings.ytdlp}</h2>
 	<div class="card">
 		<div class="stack" data-gap="16">
-			<div class="row" data-align="between">
-				<span class="item-text">
-					<span class="item-title">{m().settings.downloaderVersion}</span>
-					<span class="item-sub t-ltr">
-						{tools?.ytdlp_version ?? m().settings.notInstalled}
-					</span>
-				</span>
-				<button
-					class="btn"
-					onclick={checkForUpdates}
-					disabled={updating || !isTauri}
-				>
-					{m().settings.checkForUpdates}
-				</button>
-			</div>
 			<label class="row" data-align="between">
 				<span class="item-text">
 					<span class="item-title">{m().settings.autoUpdate}</span>
@@ -222,6 +233,55 @@
 	</div>
 
 	<h2 class="t-section">{m().settings.developer}</h2>
+	<div class="card">
+		<div class="stack" data-gap="16">
+			<div class="stack" data-gap="4">
+				<span class="t-card">{m().settings.tools}</span>
+				<!-- Not an .item-sub: that clamps to one line, and this is the
+				     sentence that explains why the panel exists. -->
+				<p class="t-secondary">{m().settings.toolsHelp}</p>
+			</div>
+			{#each report ?? [] as tool (tool.id)}
+				<div class="row" data-align="between">
+					<span class="item-text">
+						<span class="item-title t-ltr">
+							{tool.id}
+							{#if tool.version}<span class="t-secondary">{tool.version}</span>{/if}
+						</span>
+						<span class="item-sub">
+							{m().settings.toolSource[tool.source]}
+							{#if tool.detail}<span class="t-ltr"> · {tool.detail}</span>{/if}
+						</span>
+					</span>
+					<span class="badge" data-status={tool.ok ? 'success' : 'danger'}>
+						{tool.ok ? m().settings.toolReady : m().settings.toolMissing}
+					</span>
+				</div>
+			{:else}
+				<span class="t-secondary">
+					{checking ? m().settings.toolChecking : m().settings.notInstalled}
+				</span>
+			{/each}
+			<div class="row" data-gap="8">
+				<button class="btn" onclick={checkForUpdates} disabled={updating || !isTauri}>
+					{m().settings.checkForUpdates}
+				</button>
+				<!-- Icon-only: two full labels side by side break mid-word on a
+				     narrow phone, and re-probing is the lesser of the two. -->
+				<button
+					class="btn"
+					data-size="icon"
+					onclick={refreshReport}
+					disabled={checking || !isTauri}
+					aria-label={m().settings.toolRecheck}
+					title={m().settings.toolRecheck}
+				>
+					<span class="icon" data-icon="refresh-cw"></span>
+				</button>
+			</div>
+		</div>
+	</div>
+
 	<div class="card">
 		<a class="item" href="/logs" style="margin: calc(-1 * var(--sp-16)); inline-size: auto">
 			<span class="item-text">
