@@ -30,7 +30,7 @@ check: ## type-check the frontend and the Rust backend
 	@cd src-tauri && cargo check
 
 icons: ## regenerate the app icon set from src-tauri/app-icon.png
-	@pnpm tauri icon src-tauri/app-icon.png
+	@bash scripts/icons.sh
 
 release: ## bump the version, tag it, and let CI build every platform
 	@bash scripts/release.sh $(VERSION)

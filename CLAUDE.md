@@ -78,8 +78,17 @@ trimmed: no Node-server build target, desktop first.
 - App settings in `src/lib/settings.svelte.ts` (localStorage).
 - `vite preview` caches the SPA fallback HTML — restart it after a rebuild
   before browser-testing, or you'll debug a stale bundle.
-- `src-tauri/icons/*` are generated placeholders (`pnpm tauri icon
-  src-tauri/app-icon.png`) — replace `app-icon.png` with real branding later.
+- `src-tauri/icons/*` are generated placeholders — replace `app-icon.png` with
+  real branding later and run `make icons`, never `pnpm tauri icon` alone.
+  Android reads none of `src-tauri/icons/`: its launcher icon lives in
+  `gen/android/.../res/mipmap-*`, which is committed, so anything not
+  regenerated ships as the stock Tauri logo (that's how v0.1.0–v0.2.3 went out).
+  `tauri icon` also hands Android the whole plum plate as the adaptive-icon
+  foreground, which the launcher then crops to the middle 67% and masks itself —
+  so `scripts/android-adaptive-icon.py` (run by `make icons`, needs `uv`) splits
+  it: white note inset as `mipmap-*/ic_launcher_foreground.png`, plum gradient as
+  `drawable/ic_launcher_plate.xml`. It deliberately avoids the name
+  `ic_launcher_background` — `tauri icon` owns that one as a `@color`.
 
 The Makefile is the CLI (one-word targets, `##` self-docs, run bare `make`
 for the list): `make dev` runs the desktop app, `make web` just the UI in a
