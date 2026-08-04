@@ -62,8 +62,9 @@ Finished files land in `Downloads/mp3fy`.
   full-screen player, playlists, shuffle and repeat); video hands off to your
   file manager.
 - **Settings** — theme (light/dark/system), app language (English/العربية,
-  with full RTL), default format and quality, yt-dlp version and updates, and
-  the log viewer under *Developer*.
+  with full RTL), default format and quality, and under *Developer* a tools
+  panel (what yt-dlp and ffmpeg are installed, where each came from, and the
+  update check) plus the log viewer.
 
 ### Sharing a link into mp3fy
 
@@ -98,8 +99,9 @@ make release  # tag a version and let CI build every platform
 Android additionally needs a JDK 21, the Android SDK and an NDK; `make
 android` finds them and says what is missing. Unlike desktop, the Android app
 does not download yt-dlp — it ships inside the APK, because Android does not
-allow executing anything from an app's own storage. See
-[docs/android.md](docs/android.md).
+allow executing anything from an app's own storage; the copy in the APK ages,
+so the app replaces it at launch. See [docs/android.md](docs/android.md), and
+run `make clean` when you are done — a day of Android builds is over 12 GB.
 
 Releases are cut by pushing a `v*` tag: GitHub Actions builds macOS, Windows
 and Linux bundles and attaches them to the release. See

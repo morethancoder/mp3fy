@@ -68,13 +68,9 @@ trimmed: no Node-server build target, desktop first.
   or installs, later downloads start instantly. `tools_report` is the opposite
   and feeds Settings → Developer → Tools: it probes, installs nothing, and says
   which copy of each tool is live. Updating yt-dlp on Android is done *to* it,
-  not by it (`-U` can't run from storage Android won't execute): Rust resolves
-  `releases/latest/download/yt-dlp` — the redirect names the tag, so no
-  api.github.com call and none of its 60-per-hour-per-IP quota, which carrier
-  NAT makes a coin flip — and the engine's `install` command swaps the file in.
-  The APK's own yt-dlp is whatever youtubedl-android 0.18.1 shipped
-  (2025.11.12), so without a working update every download 403s eventually.
-  In-memory logs ring buffer
+  not by it, and never through api.github.com — a stale yt-dlp is the usual
+  reason a phone download 403s, so read "Keeping yt-dlp current" in
+  `docs/android.md` before touching any of it. In-memory logs ring buffer
   (`src-tauri/src/logs.rs`) surfaces at Settings → Developer → Logs (/logs);
   frontend errors are forwarded via the log_event command. Every entry is also
   echoed to stderr, which is how you watch a bundled build:
@@ -88,28 +84,17 @@ trimmed: no Node-server build target, desktop first.
 - `vite preview` caches the SPA fallback HTML — restart it after a rebuild
   before browser-testing, or you'll debug a stale bundle.
 - `src-tauri/icons/*` are generated placeholders — replace `app-icon.png` with
-  real branding later and run `make icons`, never `pnpm tauri icon` alone.
-  Android reads none of `src-tauri/icons/`: its launcher icon lives in
-  `gen/android/.../res/mipmap-*`, which is committed, so anything not
-  regenerated ships as the stock Tauri logo (that's how v0.1.0–v0.2.3 went out).
-  `tauri icon` also hands Android the whole plum plate as the adaptive-icon
-  foreground, which the launcher then crops to the middle 67% and masks itself —
-  so `scripts/android-adaptive-icon.py` (run by `make icons`, needs `uv`) splits
-  it: white note inset as `mipmap-*/ic_launcher_foreground.png`, plum gradient as
-  `drawable/ic_launcher_plate.xml`. It deliberately avoids the name
-  `ic_launcher_background` — `tauri icon` owns that one as a `@color`.
-
-- Build output eats disk fast and never shrinks on its own: cargo keeps a tree
-  per target (host debug + release + one per Android ABI) and Gradle keeps its
-  intermediates, which together had reached 12GB. `[profile.dev]` in Cargo.toml
-  gives dependencies no debug info at all (6.5GB → 1.4GB; our own frames keep
-  line tables, so backtraces still name file and line). Run `make clean` after
-  a debugging or emulator session — it takes the Gradle output too, and prints
-  what it freed. There is one emulator for every project on this machine, an
-  AVD named `phone` (medium phone, 1080×2400 @420dpi, API 35 google_apis,
-  host GPU) — never create a per-project AVD, four of them had reached 19GB.
-  Launch it with `-no-snapshot` so it cannot accumulate boot snapshots:
-  `~/Library/Android/sdk/emulator/emulator -avd phone -no-snapshot -no-audio`.
+  real branding later and regenerate with `make icons`, **never `pnpm tauri
+  icon` alone**: Android reads none of `src-tauri/icons/`, and its own icons
+  need a second step. "Icons" in `docs/android.md` says why.
+- Build output eats disk and never shrinks on its own — cargo keeps a tree per
+  target and Gradle keeps its intermediates, 12.5GB after one day. `make clean`
+  takes all of it and prints what it freed; run it when a session ends.
+  `[profile.dev]` in Cargo.toml already gives dependencies no debug info
+  (6.5GB → 1.4GB; our own frames keep line tables, so backtraces still name
+  file and line). There is exactly one emulator on this machine, the AVD
+  `phone`, shared with every other project — never create a per-project one,
+  and launch it with `-no-snapshot`. See "The emulator" in `docs/android.md`.
 
 The Makefile is the CLI (one-word targets, `##` self-docs, run bare `make`
 for the list): `make dev` runs the desktop app, `make web` just the UI in a

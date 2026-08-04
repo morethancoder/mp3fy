@@ -40,7 +40,7 @@ One definition of a download, two ways of launching it.
 
 | Concern | Desktop | Android |
 | --- | --- | --- |
-| yt-dlp | downloaded on first run, `-U` self-update | in the APK, updated by the engine |
+| yt-dlp | downloaded on first run, `-U` self-update | in the APK, replaced by [the update below](#keeping-yt-dlp-current) |
 | ffmpeg | downloaded if the system has none | in the APK |
 | Output | `Downloads/mp3fy` | app-external `Download/mp3fy` (no permission needed, and what Tauri's `$DOWNLOAD` resolves to, so the asset-protocol scope already covers it) |
 | Convert screen | works | says it is desktop-only — ffmpeg is only reachable through a download |
@@ -70,6 +70,86 @@ APK installed fine and then died in `ZipUtils.unzip` with
 `NoClassDefFoundError`. The keep rules are still in `proguard-rules.pro` for
 anyone who tries again.
 
+## Signing
+
+Release APKs are signed with a key that is **not** in the repo:
+
+- locally: `~/.mp3fy/mp3fy-release.jks`, referenced by
+  `src-tauri/gen/android/key.properties` (gitignored)
+- in CI: restored from the `ANDROID_KEYSTORE_BASE64`,
+  `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets
+
+**Back that keystore up.** Android identifies an app by its signing key: lose
+it and no future build can ever update an installed mp3fy — every user has to
+uninstall first. The GitHub secret is a copy, so it is a backup of last
+resort, not a plan.
+
+## Keeping yt-dlp current
+
+**This is the single most likely cause of an Android download failing.** The
+APK carries whatever yt-dlp youtubedl-android was built with — 0.18.1 ships
+**2025.11.12**, and 0.18.1 was still the newest on Maven Central in August
+2026, so no dependency bump fixes it (worth re-checking before you believe
+that). YouTube changes every few weeks; a copy that old gets refused
+with `HTTP Error 403: Forbidden`. Everything below exists so the shipped copy
+is only ever a starting point.
+
+The library has its own updater, and it is the one thing here we do **not**
+use. It resolves the current release through `api.github.com`, unauthenticated
+— 60 calls an hour, counted **per IP**. Phones behind carrier NAT share one IP
+with everybody else on the tower, so that quota is routinely spent by strangers
+and the call comes back 403 as well. Two unrelated-looking failures, one cause,
+and the update failing is what strands the app on the stale yt-dlp.
+
+So the update is done *to* yt-dlp rather than by it:
+
+```
+tools.rs::update_ytdlp  (android branch)
+  1. GET https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp
+     with redirects OFF. The 302's Location is
+     …/releases/download/2026.07.04/yt-dlp — the tag, for free, no API call.
+  2. same tag as the installed one? stop, nothing to do.
+  3. download the file into the app-data bin dir
+  4. android_engine::install ──► YtdlpPlugin.install
+       copies it to noBackupFiles/youtubedl-android/yt-dlp/yt-dlp,
+       calls YoutubeDL.init_ytdlp (which adopts an existing file and only
+       unpacks the APK's copy when it finds none), records the tag in prefs
+```
+
+Two things that must stay true:
+
+- **`install` takes the engine lock and skips while a download runs.** yt-dlp
+  is a zip Python imports lazily; rewriting it mid-download kills that download
+  with `zipimport.ZipImportError: bad local file header`. Skipping is right —
+  the update also runs unattended at launch, and the next launch retries.
+- **The version lives in our own preference**, not the library's. A freshly
+  installed APK knows its yt-dlp version only by running it, so that probe
+  (`status`, one Python start) happens on the tools screen and nowhere on the
+  launch path.
+
+`Settings → Developer → Tools` is where all of this becomes visible: each tool
+with a Ready/Missing badge, its version, and where the live copy came from
+(*Shipped with the app* / *Updated on this device* / *Downloaded by the app* /
+*Found on this system*). Check there first when a download fails for no
+apparent reason — "Shipped with the app" months after a release is the answer.
+
+## Icons
+
+Android reads **none** of `src-tauri/icons/`. Its launcher icon lives in
+`gen/android/app/src/main/res/mipmap-*`, which is committed, so an icon that is
+not regenerated ships as the stock Tauri logo — which is exactly what v0.1.0
+through v0.2.3 did.
+
+Always regenerate with `make icons`, never `pnpm tauri icon` alone. The extra
+step (`scripts/android-adaptive-icon.py`, needs `uv`) exists because
+`tauri icon` writes the whole plum plate as the adaptive-icon *foreground*,
+and launchers crop adaptive foregrounds to their middle 67% before applying
+their own mask — the plate's corners would be sliced off and the note would
+read zoomed in. The script splits the artwork the way the format expects: the
+white note alone inset to the safe zone, over a plum gradient in
+`drawable/ic_launcher_plate.xml`. That name avoids `ic_launcher_background`,
+which `tauri icon` owns as a `@color`.
+
 ## Debugging
 
 `logs::log` writes to logcat as well as to the in-app Logs screen:
@@ -92,19 +172,65 @@ adb shell am start -a android.intent.action.VIEW -d "mp3fy://https://youtu.be/VI
 Note that Android rewrites `mp3fy://https://x` to `mp3fy://https//x`, eating
 the inner colon — exactly as macOS does. `src/lib/shared-links.ts` repairs it.
 
-## Signing
+## The emulator
 
-Release APKs are signed with a key that is **not** in the repo:
+There is **one** AVD on this machine, named `phone`, shared with every other
+project. Four app-specific ones had reached 19 GB between them; do not make a
+fifth.
 
-- locally: `~/.mp3fy/mp3fy-release.jks`, referenced by
-  `src-tauri/gen/android/key.properties` (gitignored)
-- in CI: restored from the `ANDROID_KEYSTORE_BASE64`,
-  `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` repository secrets
+```sh
+~/Library/Android/sdk/emulator/emulator -avd phone -no-snapshot -no-audio -no-boot-anim &
+adb wait-for-device
+until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; do sleep 3; done
+```
 
-**Back that keystore up.** Android identifies an app by its signing key: lose
-it and no future build can ever update an installed mp3fy — every user has to
-uninstall first. The GitHub secret is a copy, so it is a backup of last
-resort, not a plan.
+`-no-snapshot` matters: boot snapshots had grown to 3.8 GB on the AVD that
+kept them. It is a medium phone — 1080×2400 @420dpi, API 35 `google_apis`
+(not a Play Store image, so sideloading is unobstructed), 4 GB RAM, host GPU.
+If it is ever lost:
+
+```sh
+avdmanager create avd -n phone -k "system-images;android-35;google_apis;arm64-v8a" -d medium_phone
+# then in ~/.android/avd/phone.avd/config.ini: hw.gpu.enabled=yes, hw.ramSize=4096,
+# hw.keyboard=yes, disk.dataPartition.size=6G — avdmanager's defaults are 2 GB
+# of RAM and software rendering.
+```
+
+A whole verification run, which is how the yt-dlp update was confirmed:
+
+```sh
+make android MODE=debug
+adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+adb logcat -c && adb shell am start -n com.morethancoder.mp3fy/.MainActivity
+adb logcat -d --pid=$(adb shell pidof com.morethancoder.mp3fy | tr -d '\r') | grep -E "mp3fy +: \["
+```
+
+Driving the UI without hands: `adb shell input tap X Y` (coordinates in the
+`wm size` space) and `adb exec-out screencap -p > shot.png` to see the result.
+Type into a field with `adb shell "input text 'https://youtu.be/VIDEO_ID'"` —
+**quote it inside the shell command**, or the device's shell eats everything
+from the first `.` onward.
+
+Two things that bite:
+
+- Installing over a differently-signed build fails with
+  `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Debug and release keys differ, so
+  `adb uninstall com.morethancoder.mp3fy` first when switching between them.
+- `adb logcat -s mp3fy:*` is a zsh glob and will not run; use `mp3fy:V`.
+
+The 16 KB verification below used an `android-37.1 ps16k` AVD which no longer
+exists. The system image is still installed, so recreating it is
+`avdmanager create avd -n phone16k -k
+"system-images;android-37.1;google_apis_playstore_ps16k;arm64-v8a" -d medium_phone`
+— delete it again afterwards.
+
+## Housekeeping
+
+Android builds are the bulk of what fills the disk: cargo keeps a target tree
+per ABI and Gradle keeps its intermediates, together 12.5 GB after a day.
+`make clean` takes cargo's target dir, `gen/android/app/build`,
+`gen/android/.gradle`, `.svelte-kit`, `build` and `.playwright`, and prints
+what each freed. Run it when a session ends rather than a month later.
 
 ## 16 KB page sizes
 

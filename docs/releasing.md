@@ -9,7 +9,7 @@ builds mp3fy on three runners and attaches the bundles to a GitHub Release:
 | `macos-latest` | `.dmg` and `.app.tar.gz`, built `--target universal-apple-darwin` (Apple Silicon + Intel in one file) |
 | `ubuntu-24.04` | `.deb`, `.rpm`, `.AppImage` |
 | `windows-latest` | `.msi` and NSIS `-setup.exe` |
-| `ubuntu-24.04` (android job) | a signed universal `.apk`, uploaded to the release the others created |
+| `ubuntu-24.04` (android job) | three signed `.apk`s, one per ABI, uploaded to the release the others created |
 
 ## Cutting one
 
