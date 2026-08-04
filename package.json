@@ -1,6 +1,6 @@
 {
 	"name": "mp3fy",
-	"version": "0.2.4",
+	"version": "0.2.5",
 	"description": "Turn any video link into a local audio file, powered by yt-dlp",
 	"license": "MIT",
 	"private": true,
