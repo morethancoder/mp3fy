@@ -295,7 +295,14 @@ fn start_on_android(
 
         match result {
             Ok(()) => {
-                let path = path.unwrap_or_default();
+                // Into the phone's media library before anyone is told about
+                // it: the history row, the player and the share sheet all take
+                // the path from the `done` event, and it has to be the final
+                // one. Publishing that fails answers with the path we had.
+                let path = match path {
+                    Some(path) if !path.is_empty() => crate::android_engine::publish(&app2, &path),
+                    _ => String::new(),
+                };
                 log("download", format!("done: {path}"));
                 emit_done(&app2, "download:done", path);
             }

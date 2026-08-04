@@ -184,6 +184,27 @@ struct OpenArgs {
     path: String,
 }
 
+#[derive(Deserialize)]
+pub struct Published {
+    pub path: String,
+}
+
+/// Move a finished download into the phone's media library, and say where it
+/// ended up. Never fails the download: the engine answers with the original
+/// path when it could not publish. See `YtdlpPlugin.publish`.
+pub fn publish(app: &AppHandle, path: &str) -> String {
+    let published: Option<Published> = plugin(app)
+        .ok()
+        .and_then(|engine| {
+            engine
+                .0
+                .run_mobile_plugin("publish", OpenArgs { path: path.into() })
+                .map_err(|e| crate::logs::log("library", format!("could not publish: {e}")))
+                .ok()
+        });
+    published.map(|p| p.path).unwrap_or_else(|| path.to_string())
+}
+
 /// Hand a finished file to another app — Android's answer to revealing it in
 /// a file manager, which the opener plugin does not support here.
 pub fn open_file(app: &AppHandle, path: &str) -> Result<(), String> {

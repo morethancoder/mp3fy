@@ -32,6 +32,31 @@ export function formatDate(iso: string): string {
 	}
 }
 
+/**
+ * The media type a file name implies. Used both to label a share and to
+ * re-type the bytes the player reads: the asset protocol sniffs a type of its
+ * own (`audio/m4a` for an m4a, which is not a registered type at all), and a
+ * media element that is handed something it does not recognise refuses the
+ * file outright.
+ */
+const MIME: Record<string, string> = {
+	mp3: 'audio/mpeg',
+	m4a: 'audio/mp4',
+	aac: 'audio/aac',
+	opus: 'audio/ogg',
+	ogg: 'audio/ogg',
+	flac: 'audio/flac',
+	wav: 'audio/wav',
+	mp4: 'video/mp4',
+	webm: 'video/webm',
+	mkv: 'video/x-matroska'
+};
+
+export function mimeFor(path: string): string | null {
+	const ext = path.split(/[/\\]/).pop()?.split('.').pop()?.toLowerCase() ?? '';
+	return MIME[ext] ?? null;
+}
+
 /** The file name without its extension — good enough for a track title. */
 export function titleFromPath(path: string): string {
 	const base = path.split(/[/\\]/).pop() ?? path;

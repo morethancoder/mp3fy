@@ -25,7 +25,9 @@
 				"enable": true,
 				"scope": [
 					"$DOWNLOAD/mp3fy/**",
-					"$HOME/mp3fy/**"
+					"$HOME/mp3fy/**",
+					"/storage/emulated/*/Music/mp3fy/**",
+					"/storage/emulated/*/Movies/mp3fy/**"
 				]
 			}
 		}

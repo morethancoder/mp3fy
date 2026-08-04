@@ -180,6 +180,67 @@ Verify with the status bar in the shot: `adb exec-out screencap -p` and check
 that nothing paints in the top 24dp. See
 `fixes/MTUI-SAFE-AREA-FIX-PROMPT.md` for the upstream suggestion.
 
+## Why playback reads the whole file first
+
+`<audio src=convertFileSrc(path)>` is the obvious way to play a local file and
+it is broken here — quietly, and in a way that reads as a bad download.
+
+A media element asks for its resource with `Range: bytes=0-`. Tauri's asset
+protocol answers a range request with **at most 1000 KiB** (`MAX_LEN` in
+`tauri/src/protocol/asset.rs`). A desktop webview then asks for the next range,
+and the next. Android's does not: custom-scheme responses arrive through
+`shouldInterceptRequest` as one `WebResourceResponse`, so that first megabyte
+is everything the player will ever receive.
+
+Measured on the emulator against a 3.19 MB, 195-second m4a:
+
+| Request | Status | Bytes |
+| --- | --- | --- |
+| `fetch(url)` — no Range | 200 | 3,193,342 (all of it, in 80 ms) |
+| `fetch(url, Range: bytes=0-)` — what `<audio>` sends | 206 | 1,024,000, `Content-Range: bytes 0-1023999/3193342` |
+
+So playback stopped partway with the transport still claiming to play, always
+at the same point, and **sooner for a higher bitrate** — 1 MB of 320 kbps is
+25 seconds, 1 MB of 128 kbps is 64. Seeking past it hung forever, because the
+seek needs a range that never comes. With a file whose `moov` atom sits at the
+end, the element never even got a duration and retried in a loop.
+
+`$lib/player` therefore fetches the file once, without a Range header, and
+plays it from a `blob:` URL — in memory, seekable by definition. Over
+`INLINE_LIMIT` (128 MB) it falls back to streaming and says so in the logs,
+because that path is still the broken one.
+
+**This is not a player problem.** Swapping in howler.js, wavesurfer or any
+other library changes nothing: they all wrap the same media element and would
+be handed the same truncated megabyte.
+
+## Where finished files live
+
+Downloads are *written* to `Android/data/<pkg>/files/Download/mp3fy` — no
+permission needed — and then **moved into the phone's media library**
+(`YtdlpPlugin.publish` → `MediaStore`, `Music/mp3fy`, or `Movies/mp3fy` for
+video). Leaving them in `Android/data` made them invisible twice over: since
+Android 11 the Files app refuses to browse that tree at all, and no media
+scanner has ever looked inside it, so nothing on the device could see a
+finished track.
+
+MediaStore needs no permission for a file the app inserts, and that ownership
+is also what keeps mp3fy's own player working: from API 30 an app may open its
+own media files by plain path, which is what the asset protocol does. API 29
+needs `requestLegacyExternalStorage` (in the manifest, ignored from 30 on);
+below that there is no scoped MediaStore to insert into without asking for
+storage permission, so the file stays where it was written.
+
+Two things that must stay true:
+
+- **The asset-protocol scope has to cover the new home.** `tauri.conf.json`
+  lists `/storage/emulated/*/Music/mp3fy/**` and the Movies twin next to
+  `$DOWNLOAD/mp3fy/**`; without them the player gets a 403 from its own file.
+- **Publishing happens before the `done` event.** The history row, the player
+  and the share sheet all take the path from that event, so it has to be the
+  final one. A publish that fails answers with the original path — a download
+  that landed is worth more than a tidy location.
+
 ## Opening a finished file
 
 `revealItemInDir` — the desktop "Open in Files" — is **documented unsupported

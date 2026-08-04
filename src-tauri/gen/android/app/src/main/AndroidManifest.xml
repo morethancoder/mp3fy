@@ -5,11 +5,17 @@
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <!-- requestLegacyExternalStorage is for Android 10 alone: finished
+         downloads are moved into the shared Music collection
+         (YtdlpPlugin.publish) and the player opens them by path. API 30+
+         allows that for a file the app owns; API 29 needs this flag, and
+         everything from 30 on ignores it. -->
     <application
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.mp3fy"
         android:extractNativeLibs="true"
+        android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="${usesCleartextTraffic}">
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"

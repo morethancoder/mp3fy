@@ -32,8 +32,13 @@ trimmed: no Node-server build target, desktop first.
 - The player (`src/lib/player.svelte.ts`) is a module-level <audio> so
   playback survives tab navigation; Media Session wiring gives OS media
   controls / mobile notification player where the webview supports it. Local
-  files play via `convertFileSrc` — requires the asset protocol scope in
-  tauri.conf.json. Every `play()` goes through `begin()`, which swallows the
+  files are read once with a plain `fetch` (no Range header) and played from a
+  `blob:` URL — **never point the element at `convertFileSrc` directly**: the
+  asset protocol caps a range response at 1 MB and Android's webview cannot
+  ask for the next one, so playback stopped a fixed number of seconds in and
+  seeking hung. "Why playback reads the whole file first" in `docs/android.md`;
+  it is not a player-library problem, and no JS player fixes it. The path still
+  has to be in the asset protocol scope in tauri.conf.json. Every `play()` goes through `begin()`, which swallows the
   AbortError a track change always produces (it was filling the Logs screen)
   and logs everything else; an `error` listener names the file that would not
   decode, because "the player just stopped" had no other trace. Shuffle/repeat/volume persist to `mp3fy-player` — there is
@@ -66,7 +71,12 @@ trimmed: no Node-server build target, desktop first.
   `data-feedback="tick"` and finishing plays `chime()` from
   `src/lib/feedback.ts`. Completion toasts pass no `kind` for the same
   reason. The mute switch stays MTUI's, never a second one.
-- Output goes to Downloads/mp3fy (`tools::downloads_dir`). History is
+- Output goes to Downloads/mp3fy (`tools::downloads_dir`); on Android the
+  finished file is then moved into the phone's media library
+  (`YtdlpPlugin.publish` → MediaStore `Music/mp3fy`) before `download:done`
+  fires, because `Android/data` is browsable by nothing since Android 11 —
+  keep the asset scope and that ordering in step, see "Where finished files
+  live" in `docs/android.md`. History is
   localStorage (`src/lib/history.svelte.ts`) with artist/thumbnail (fetched
   in parallel with each download via fetch_info), play counts and the source
   URL — that last one is what lets a repeated link ask "already downloaded,

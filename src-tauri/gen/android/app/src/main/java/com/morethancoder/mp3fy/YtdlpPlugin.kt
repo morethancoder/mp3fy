@@ -1,9 +1,12 @@
 package com.morethancoder.mp3fy
 
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import android.webkit.WebView
 import androidx.core.content.FileProvider
@@ -192,6 +195,105 @@ class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
             } catch (e: Exception) {
                 invoke.reject(describe(e, "the window insets could not be read"))
             }
+        }
+    }
+
+    /**
+     * Move a finished download into the phone's own media library.
+     *
+     * Downloads are written to `Android/data/<pkg>/files/Download/mp3fy`,
+     * which needs no permission and is exactly the wrong place to leave them:
+     * since Android 11 the Files app refuses to browse `Android/data` at all,
+     * and no media scanner has ever looked inside it, so a finished track was
+     * invisible to the Files app and to every music player on the device.
+     *
+     * MediaStore is the way in. Inserting the file under `Music/mp3fy`
+     * publishes it to the shared collection — indexed, browsable, and playable
+     * by any app — with no permission needed, because the app owns what it
+     * inserts. That ownership is also what keeps mp3fy's own player working:
+     * from API 30 an app may open its own media files by plain path, which is
+     * what the asset protocol does.
+     *
+     * Returns where the file now lives; the original path if publishing was
+     * not possible, since a download that landed is worth more than a tidy
+     * location. Below API 29 there is no scoped MediaStore to insert into
+     * without asking for storage permission, and the file stays put.
+     */
+    @Command
+    fun publish(invoke: Invoke) {
+        val args = invoke.parseArgs(OpenArgs::class.java)
+        thread {
+            val source = File(args.path)
+            val path = try {
+                if (source.isFile) publishToLibrary(source) else args.path
+            } catch (e: Exception) {
+                android.util.Log.w("mp3fy", "[library] could not publish ${source.name}: ${e.message}")
+                args.path
+            }
+            invoke.resolve(JSObject().apply { put("path", path) })
+        }
+    }
+
+    private fun publishToLibrary(source: File): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return source.absolutePath
+
+        val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(source.extension.lowercase())
+            ?: "audio/*"
+        val isVideo = mime.startsWith("video/")
+        val collection = if (isVideo) {
+            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        }
+        val folder = if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_MUSIC
+        val resolver = activity.contentResolver
+
+        val pending = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, source.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "$folder/mp3fy")
+            // Hidden from other apps until the bytes are all there, so a
+            // music player cannot index half a track.
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, pending) ?: return source.absolutePath
+
+        try {
+            resolver.openOutputStream(uri).use { out ->
+                requireNotNull(out) { "the media library would not open the file for writing" }
+                source.inputStream().use { it.copyTo(out) }
+            }
+            resolver.update(
+                uri,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                null,
+                null
+            )
+
+            // The path it actually got: MediaStore renames on collision, and
+            // the rest of the app — history, the player, the share sheet —
+            // works in paths.
+            @Suppress("DEPRECATION")
+            val published = resolver.query(
+                uri,
+                arrayOf(MediaStore.MediaColumns.DATA),
+                null,
+                null,
+                null
+            )?.use { if (it.moveToFirst()) it.getString(0) else null }
+
+            if (published.isNullOrEmpty() || !File(published).isFile) {
+                // Nothing usable came back — leave the download where it is
+                // rather than hand out a path nobody can open.
+                resolver.delete(uri, null, null)
+                return source.absolutePath
+            }
+            source.delete()
+            android.util.Log.i("mp3fy", "[library] published ${source.name} to $published")
+            return published
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            throw e
         }
     }
 

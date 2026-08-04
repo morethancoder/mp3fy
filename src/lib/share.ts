@@ -15,27 +15,16 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { fileExists, isAndroid, openFile } from './api';
+import { mimeFor } from './format';
 import { m } from './i18n.svelte';
-
-const MIME: Record<string, string> = {
-	mp3: 'audio/mpeg',
-	m4a: 'audio/mp4',
-	opus: 'audio/ogg',
-	flac: 'audio/flac',
-	wav: 'audio/wav',
-	mp4: 'video/mp4',
-	webm: 'video/webm',
-	mkv: 'video/x-matroska'
-};
 
 export async function shareFile(path: string): Promise<'shared' | 'revealed'> {
 	const name = path.split(/[/\\]/).pop() ?? 'file';
-	const ext = name.split('.').pop()?.toLowerCase() ?? '';
 	try {
 		if (navigator.share) {
 			const blob = await (await fetch(convertFileSrc(path))).blob();
 			const file = new File([blob], name, {
-				type: MIME[ext] ?? 'application/octet-stream'
+				type: mimeFor(path) ?? 'application/octet-stream'
 			});
 			if (!navigator.canShare || navigator.canShare({ files: [file] })) {
 				await navigator.share({ files: [file], title: name });
