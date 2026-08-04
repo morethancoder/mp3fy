@@ -9,6 +9,16 @@ edition = "2021"
 name = "mp3fy_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# A debug build of this tree was 6.5 GB, and 4.4 GB of that was DWARF for
+# crates nobody here will ever step into — hyper, rustls, tokio, wry. Deps get
+# no debug info at all; our own code keeps line tables, which is all a readable
+# backtrace needs. Panics still name the file and line in mp3fy's own frames.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

@@ -99,6 +99,14 @@ trimmed: no Node-server build target, desktop first.
   `drawable/ic_launcher_plate.xml`. It deliberately avoids the name
   `ic_launcher_background` — `tauri icon` owns that one as a `@color`.
 
+- Build output eats disk fast and never shrinks on its own: cargo keeps a tree
+  per target (host debug + release + one per Android ABI) and Gradle keeps its
+  intermediates, which together had reached 12GB. `[profile.dev]` in Cargo.toml
+  gives dependencies no debug info at all (6.5GB → 1.4GB; our own frames keep
+  line tables, so backtraces still name file and line). Run `make clean` after
+  a debugging or emulator session — it takes the Gradle output too, and prints
+  what it freed.
+
 The Makefile is the CLI (one-word targets, `##` self-docs, run bare `make`
 for the list): `make dev` runs the desktop app, `make web` just the UI in a
 browser, `make check` type-checks both sides, `make build` bundles,

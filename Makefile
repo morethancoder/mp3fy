@@ -36,5 +36,4 @@ release: ## bump the version, tag it, and let CI build every platform
 	@bash scripts/release.sh $(VERSION)
 
 clean: ## remove build output and caches
-	@rm -rf .svelte-kit build .playwright src-tauri/target
-	@echo "cleaned"
+	@bash scripts/clean.sh
