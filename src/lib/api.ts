@@ -108,6 +108,34 @@ export function cancelDownload(): Promise<void> {
 	return invoke('cancel_download');
 }
 
+/** Is the file a history row points at still on disk? */
+export function fileExists(path: string): Promise<boolean> {
+	return isTauri ? invoke<boolean>('file_exists', { path }) : Promise.resolve(false);
+}
+
+/**
+ * Hand a file to another app (Android only — desktop reveals it in the file
+ * manager through the opener plugin instead).
+ */
+export function openFile(path: string): Promise<void> {
+	return invoke('open_file', { path });
+}
+
+export interface Insets {
+	top: number;
+	bottom: number;
+	left: number;
+	right: number;
+}
+
+/**
+ * What the system bars and the display cutout are covering, in CSS pixels.
+ * Zero everywhere but Android — see `$lib/safe-area`.
+ */
+export function safeAreaInsets(): Promise<Insets> {
+	return invoke<Insets>('safe_area_insets');
+}
+
 export function convertFile(opts: {
 	input: string;
 	format: string;

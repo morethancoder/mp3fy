@@ -150,6 +150,52 @@ white note alone inset to the safe zone, over a plum gradient in
 `drawable/ic_launcher_plate.xml`. That name avoids `ic_launcher_background`,
 which `tauri icon` owns as a `@color`.
 
+## Safe areas
+
+Android draws the app edge to edge — `MainActivity` asks for it, and from
+`targetSdk 35` the system does it anyway — and **CSS cannot see the system
+bars here**. `env(safe-area-inset-*)` on Android WebView reports the *display
+cutout* and nothing else, so MTUI's shell padding came out as zero and the
+header sat level with the clock while the player's close button landed under
+the status bar.
+
+The insets are therefore measured where they exist and handed to CSS:
+
+```
+YtdlpPlugin.insets            WindowInsetsCompat (systemBars | displayCutout),
+  └─ android_engine::insets     converted to CSS pixels
+       └─ platform::safe_area_insets   zero on every other platform
+            └─ $lib/safe-area      writes --safe-top/-bottom/-left/-right
+                 └─ app.css §0      max(env(…), var(--safe-…)) → --safe-*-css
+```
+
+Anything that touches an edge of the window spends `--safe-*-css`: the header,
+the tab bar, `.screen-stack`, and the player overlay (which covers the shell
+and so is on its own for all four edges). Never raw `env()` — it is only ever
+half the answer here. The IME is deliberately excluded, so a keyboard sliding
+up does not repaint the shell. `$lib/safe-area` re-reads on resize and
+orientation change, which is what covers rotating the phone.
+
+Verify with the status bar in the shot: `adb exec-out screencap -p` and check
+that nothing paints in the top 24dp. See
+`fixes/MTUI-SAFE-AREA-FIX-PROMPT.md` for the upstream suggestion.
+
+## Opening a finished file
+
+`revealItemInDir` — the desktop "Open in Files" — is **documented unsupported
+on Android** by the opener plugin and simply returns an error. mp3fy caught
+that error and showed "File no longer exists on disk", which was wrong about a
+file that was sitting right there, on every single tap.
+
+Android has no file manager to reveal into, so it gets an intent instead:
+`YtdlpPlugin.openFile` wraps the path in a `content://` URI through the
+FileProvider already declared in the manifest (a bare `file://` URI in an
+intent is a `FileUriExposedException` since API 24) and offers it to whatever
+app can play or show it. The frontend picks the platform in `$lib/share`:
+`revealFile` branches, `showFile` adds the error wording, and the button says
+"Open with…" rather than "Open in Files". "File no longer exists" is now only
+claimed after `platform::file_exists` says so.
+
 ## Debugging
 
 `logs::log` writes to logcat as well as to the in-app Logs screen:
@@ -259,6 +305,10 @@ shows the real format, not the one that was requested.
 
 Verified on both: API 35 (4 KB) produces the requested mp3; API 37 `ps16k`
 (16 KB) produces a playable `.webm`.
+
+The default format is now `best (original)`, which converts nothing — but
+`-x` still asks ffmpeg to lift the audio out, so this fallback is still what
+keeps a 16 KB device downloading at all.
 
 ## Not done yet
 

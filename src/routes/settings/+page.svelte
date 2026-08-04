@@ -17,7 +17,8 @@
 		AUDIO_FORMATS,
 		VIDEO_FORMATS,
 		QUALITIES,
-		QUALITY_LABEL_KEYS
+		QUALITY_LABEL_KEYS,
+		formatLabel
 	} from '$lib/settings.svelte';
 	import { m, appLanguage, setAppLanguage, type AppLanguage } from '$lib/i18n.svelte';
 	import { loadTheme, saveTheme, type ThemePreference } from '$lib/theme';
@@ -172,7 +173,7 @@
 						<select bind:value={settings.format} onchange={saveSettings}>
 							<optgroup label={m().home.audioFormats}>
 								{#each AUDIO_FORMATS as f (f)}
-									<option value={f}>{f}</option>
+									<option value={f}>{formatLabel(f)}</option>
 								{/each}
 							</optgroup>
 							<optgroup label={m().home.videoFormats}>
@@ -194,6 +195,10 @@
 							{/each}
 						</select>
 					</span>
+					<!-- The default format converts nothing, so say where this
+					     one does and does not apply rather than leave someone
+					     tuning a bitrate that never happens. -->
+					<span class="t-secondary">{m().home.qualityHelp}</span>
 				</label>
 			</x-select>
 			<div class="row">

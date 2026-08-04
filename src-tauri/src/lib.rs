@@ -3,6 +3,7 @@ mod android_engine;
 mod convert;
 mod download;
 mod logs;
+mod platform;
 mod tools;
 
 use convert::ActiveConvert;
@@ -52,6 +53,9 @@ pub fn run() {
             download::cancel_download,
             convert::convert_file,
             convert::cancel_convert,
+            platform::file_exists,
+            platform::open_file,
+            platform::safe_area_insets,
             logs::get_logs,
             logs::log_event
         ])

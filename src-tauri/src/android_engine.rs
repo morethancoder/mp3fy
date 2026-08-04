@@ -162,6 +162,38 @@ where
         .map_err(|e| e.to_string())
 }
 
+/// How much of the screen the system bars and the display cutout take, in CSS
+/// pixels. See `YtdlpPlugin.insets` for why CSS cannot ask this itself.
+#[derive(Clone, Copy, Default, Deserialize, Serialize)]
+pub struct Insets {
+    pub top: f64,
+    pub bottom: f64,
+    pub left: f64,
+    pub right: f64,
+}
+
+pub fn insets(app: &AppHandle) -> Result<Insets, String> {
+    plugin(app)?
+        .0
+        .run_mobile_plugin("insets", ())
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+struct OpenArgs {
+    path: String,
+}
+
+/// Hand a finished file to another app — Android's answer to revealing it in
+/// a file manager, which the opener plugin does not support here.
+pub fn open_file(app: &AppHandle, path: &str) -> Result<(), String> {
+    plugin(app)?
+        .0
+        .run_mobile_plugin::<serde_json::Value>("openFile", OpenArgs { path: path.into() })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 #[derive(Deserialize)]
 struct SharedLink {
     text: Option<String>,

@@ -104,6 +104,15 @@ fn job_args(dest: &std::path::Path, format: &str, quality: &str, kind: &str) -> 
     let mut args: Vec<String> = Vec::new();
     if kind == "video" {
         args.extend(["-f", "bv*+ba/b", "--remux-video", format].map(String::from));
+    } else if format == "best" {
+        // Take the audio the site already serves and re-encode nothing.
+        // "best" is yt-dlp's own default for --audio-format and means exactly
+        // that: extract the audio stream, convert only if the container forces
+        // it. Every artefact and every clipped tail an mp3 could introduce
+        // comes from the conversion this skips, so it is the default.
+        // --audio-quality is left off deliberately — it only describes an
+        // encode that is not happening.
+        args.extend(["-x", "--audio-format", "best"].map(String::from));
     } else {
         args.extend(["-x", "--audio-format", format].map(String::from));
         args.push("--audio-quality".into());

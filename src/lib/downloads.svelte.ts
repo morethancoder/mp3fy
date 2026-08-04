@@ -13,13 +13,14 @@
 import {
 	cancelDownload,
 	fetchInfo,
+	fileExists,
 	isTauri,
 	onJobEvents,
 	startDownload,
 	type ProgressEvent,
 	type VideoInfo
 } from './api';
-import { addToHistory, type HistoryEntry } from './history.svelte';
+import { addToHistory, history, type HistoryEntry } from './history.svelte';
 import { chime } from './feedback';
 import { m } from './i18n.svelte';
 import { formatKind, settings, type MediaFormat, type Quality } from './settings.svelte';
@@ -36,6 +37,12 @@ export interface DownloadState {
 	kind: 'audio' | 'video';
 	/** Links shared while a job was running; they start as this one drains. */
 	queued: string[];
+	/**
+	 * A link that has already produced a file still on disk, waiting for the
+	 * user to say whether to fetch it again. The dialog lives in the layout,
+	 * not on Home: a shared link can land on any screen.
+	 */
+	duplicate: { url: string; entry: HistoryEntry } | null;
 }
 
 export const download = $state<DownloadState>({
@@ -46,12 +53,56 @@ export const download = $state<DownloadState>({
 	finished: null,
 	format: settings.format,
 	kind: formatKind(settings.format),
-	queued: []
+	queued: [],
+	duplicate: null
 });
 
 /** Title/artist/thumbnail for the running job — not rendered until it lands. */
 let info: VideoInfo | null = null;
+/** The link the running job came from; `download.url` is cleared when it lands. */
+let source: string | null = null;
 let subscribed = false;
+
+/**
+ * Two links are the same download when they name the same thing — not when
+ * they are the same string. Sharing from an app adds a tracking parameter,
+ * copying from the address bar adds a trailing slash, and neither means
+ * "fetch it again". Anything beyond that (youtu.be against watch?v=) is left
+ * alone: the prompt asks rather than decides, so a miss costs a question and
+ * never a wrong answer.
+ */
+const NOISE = /^(utm_|si$|feature$|fbclid$|gclid$|igsh$|igshid$)/;
+
+function normalizeLink(raw: string): string {
+	const link = raw.trim();
+	try {
+		const url = new URL(link);
+		url.hash = '';
+		// Only the host is case-insensitive. A video id is not: `youtu.be/dQw4`
+		// and `youtu.be/DQW4` are two different videos, and folding their case
+		// together would answer "you already have this" about something the
+		// user has never seen.
+		url.protocol = url.protocol.toLowerCase();
+		url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+		for (const key of [...url.searchParams.keys()]) {
+			if (NOISE.test(key)) url.searchParams.delete(key);
+		}
+		return url.toString().replace(/\/$/, '');
+	} catch {
+		return link.replace(/\/$/, '');
+	}
+}
+
+/**
+ * The file this link already produced, if it is still there. A history row
+ * whose file someone has since deleted is not a reason to ask anything.
+ */
+async function alreadyHave(url: string): Promise<HistoryEntry | null> {
+	const wanted = normalizeLink(url);
+	const entry = history.entries.find((e) => e.url && normalizeLink(e.url) === wanted);
+	if (!entry) return null;
+	return (await fileExists(entry.path).catch(() => false)) ? entry : null;
+}
 
 /**
  * One download at a time is a yt-dlp/ffmpeg constraint, but share three links
@@ -94,7 +145,9 @@ export function initDownloads(): void {
 					kind: download.kind,
 					size: f.size,
 					artist: info?.uploader ?? null,
-					thumbnail: info?.thumbnail ?? null
+					thumbnail: info?.thumbnail ?? null,
+					// Kept so the same link asks before downloading twice.
+					url: source
 				});
 				// The link has done its job — clear it so the next paste lands
 				// in an empty field instead of on top of the old one.
@@ -116,9 +169,21 @@ export function initDownloads(): void {
 	});
 }
 
-export async function startJob(): Promise<void> {
+export async function startJob(opts: { force?: boolean } = {}): Promise<void> {
 	const url = download.url.trim();
 	if (!url || download.busy) return;
+
+	// Ask before fetching something the library already has. `force` is the
+	// answer coming back from that question, and the only way past it.
+	if (!opts.force) {
+		const previous = await alreadyHave(url);
+		if (previous) {
+			download.duplicate = { url, entry: previous };
+			return;
+		}
+	}
+	download.duplicate = null;
+	source = url;
 
 	download.format = settings.format;
 	download.kind = formatKind(settings.format);
@@ -166,6 +231,27 @@ export function startWithUrl(url: string): 'started' | 'queued' {
 	return 'started';
 }
 
+/** "Download it again" — the one path past the duplicate question. */
+export function redownload(): void {
+	const pending = download.duplicate;
+	download.duplicate = null;
+	if (!pending) return;
+	download.url = pending.url;
+	void startJob({ force: true });
+}
+
+/**
+ * "Keep what I have." The link is dropped rather than left in the field: it
+ * has been answered, and a queue behind it must still drain — a shared link
+ * waiting on a question nobody asked for would strand every link after it.
+ */
+export function keepExisting(): void {
+	if (!download.duplicate) return;
+	download.duplicate = null;
+	download.url = '';
+	drainQueue();
+}
+
 /**
  * Cancel means stop, not "skip to the next one" — the waiting links are on
  * screen while this runs, so dropping them here is what the button says.
@@ -181,6 +267,8 @@ export function clearJob(): void {
 	download.url = '';
 	download.error = null;
 	download.finished = null;
+	download.duplicate = null;
 	download.queued.length = 0;
 	info = null;
+	source = null;
 }

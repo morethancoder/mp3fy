@@ -1,7 +1,6 @@
 <script lang="ts">
 	import 'morethanui/js/x-contextmenu.js';
 	import { onMount } from 'svelte';
-	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { m, locale } from '$lib/i18n.svelte';
 	import { history, removeFromHistory, type HistoryEntry } from '$lib/history.svelte';
 	import {
@@ -11,7 +10,7 @@
 		toggleInPlaylist
 	} from '$lib/playlists.svelte';
 	import { play, player } from '$lib/player.svelte';
-	import { shareFile } from '$lib/share';
+	import { openLabel, shareFile, showFile } from '$lib/share';
 	import { formatBytes, formatDate } from '$lib/format';
 
 	type Sort = 'recent' | 'plays' | 'title';
@@ -39,10 +38,7 @@
 
 	function open(entry: HistoryEntry) {
 		if (entry.kind === 'audio') play(entry, visible);
-		else
-			revealItemInDir(entry.path).catch(() =>
-				window.mtui?.toast(m().library.missing, { kind: 'error' })
-			);
+		else void showFile(entry.path);
 	}
 
 	function dialogEl(): HTMLDialogElement {
@@ -85,9 +81,7 @@
 				dialogEl().showModal();
 				break;
 			case 'reveal':
-				await revealItemInDir(entry.path).catch(() =>
-					window.mtui?.toast(m().library.missing, { kind: 'error' })
-				);
+				await showFile(entry.path);
 				break;
 			case 'share':
 				if ((await shareFile(entry.path)) === 'revealed') {
@@ -231,7 +225,7 @@
 			<template>
 				<button class="menu-item" data-value="play">{m().library.play}</button>
 				<button class="menu-item" data-value="playlist">{m().library.addToPlaylist}</button>
-				<button class="menu-item" data-value="reveal">{m().library.reveal}</button>
+				<button class="menu-item" data-value="reveal">{openLabel()}</button>
 				<button class="menu-item" data-value="share">{m().library.share}</button>
 				<button class="menu-item" data-value="remove" data-danger>{m().library.remove}</button>
 			</template>

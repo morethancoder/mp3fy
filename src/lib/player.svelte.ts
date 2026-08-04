@@ -7,8 +7,9 @@
  */
 
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { isTauri } from './api';
+import { isTauri, logEvent } from './api';
 import { history, incrementPlays, type HistoryEntry } from './history.svelte';
+import { m } from './i18n.svelte';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
@@ -75,6 +76,25 @@ function persistPrefs() {
 
 let audio: HTMLAudioElement | null = null;
 
+/**
+ * Start playback and swallow the one rejection that means nothing.
+ *
+ * `play()` returns a promise the browser rejects with AbortError whenever
+ * something interrupts the attempt — loading the next track, or a pause a few
+ * milliseconds later. Left as `void audio.play()` those rejections went
+ * unhandled, which the layout's `unhandledrejection` hook dutifully wrote to
+ * the Logs screen: two "The play() request was interrupted by a call to
+ * pause()" lines for every track change, and no way to tell them apart from a
+ * failure that actually mattered. Anything else is a real problem and is
+ * logged as one.
+ */
+function begin(a: HTMLAudioElement) {
+	a.play().catch((e: unknown) => {
+		if (e instanceof DOMException && e.name === 'AbortError') return;
+		logEvent('player', `could not start playback: ${e}`);
+	});
+}
+
 function engine(): HTMLAudioElement {
 	if (audio) return audio;
 	audio = new Audio();
@@ -95,10 +115,26 @@ function engine(): HTMLAudioElement {
 	audio.addEventListener('ended', () => {
 		if (player.repeat === 'one') {
 			seek(0);
-			void audio!.play();
+			begin(audio!);
 			return;
 		}
 		step(1, true);
+	});
+	// A file that will not decode used to look like the player stopping for no
+	// reason: silence, a play button that did nothing, and nothing in the logs
+	// naming the file. MEDIA_ERR_SRC_NOT_SUPPORTED (4) is the usual one — a
+	// container the webview cannot open, or a file truncated by a download that
+	// died in post-processing.
+	audio.addEventListener('error', () => {
+		// ✕ empties the element on purpose; that is not a failure to report.
+		if (!player.current) return;
+		const err = audio?.error;
+		player.playing = false;
+		logEvent(
+			'player',
+			`playback failed (code ${err?.code ?? '?'}${err?.message ? `: ${err.message}` : ''}) — ${player.current?.path ?? 'no file'}`
+		);
+		window.mtui?.toast(m().player.failed, { kind: 'error' });
 	});
 	wireMediaSession();
 	return audio;
@@ -132,7 +168,7 @@ function start(entry: HistoryEntry, queue?: HistoryEntry[]) {
 		setMetadata(entry);
 		incrementPlays(entry.id);
 	}
-	void a.play();
+	begin(a);
 }
 
 /** Play on purpose — from a list row or a finished download. Opens the player. */
@@ -174,7 +210,7 @@ export function expand() {
 
 export function toggle() {
 	if (!audio || !player.current) return;
-	if (audio.paused) void audio.play();
+	if (audio.paused) begin(audio);
 	else audio.pause();
 }
 

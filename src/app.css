@@ -12,6 +12,31 @@
    wrapper, so the nav is a grid item of body but not its element child.
    -------------------------------------------------------------------------- */
 
+/* 0. Safe areas, the whole app's floor.
+
+   MTUI pads the header and the tab bar with env(safe-area-inset-*), which is
+   the right answer on iOS and macOS and an incomplete one on Android: there
+   the env() values only describe a display cutout, and the status bar and the
+   gesture bar are invisible to CSS. The app draws edge to edge, so the header
+   ended up under the clock. $lib/safe-area reads the real insets from the
+   window and writes them into --safe-*; these four fold the two sources
+   together so neither can be undercut. See fixes/MTUI-SAFE-AREA-FIX-PROMPT.md.
+
+   Everything that touches an edge of the window — the shell, the player
+   overlay, the popovers pinned to a corner — spends these rather than raw
+   env(), so "not against the edge" is one rule and not a habit. */
+:root {
+	--safe-top-css: max(env(safe-area-inset-top, 0px), var(--safe-top, 0px));
+	--safe-bottom-css: max(env(safe-area-inset-bottom, 0px), var(--safe-bottom, 0px));
+	--safe-left-css: max(env(safe-area-inset-left, 0px), var(--safe-left, 0px));
+	--safe-right-css: max(env(safe-area-inset-right, 0px), var(--safe-right, 0px));
+}
+
+body.shell .shell-header {
+	padding-block-start: calc(var(--sp-8) + var(--safe-top-css));
+	padding-inline: max(var(--pad), var(--safe-left-css), var(--safe-right-css));
+}
+
 /* 1. tab bar at every width */
 @media (min-width: 768px) {
 	body.shell {
@@ -35,9 +60,9 @@
 body.shell .shell-nav {
 	justify-content: center;
 	gap: var(--sp-8);
-	padding-inline: var(--pad);
+	padding-inline: max(var(--pad), var(--safe-left-css), var(--safe-right-css));
 	padding-block: var(--sp-8);
-	padding-block-end: calc(var(--sp-8) + env(safe-area-inset-bottom, 0px));
+	padding-block-end: calc(var(--sp-8) + var(--safe-bottom-css));
 }
 
 body.shell .shell-nav > * {
@@ -115,14 +140,14 @@ body .accordion summary:hover {
 
 /* 3. keep content clear of the cutout when a phone is turned sideways */
 body.shell .screen-stack {
-	padding-inline: max(var(--pad), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+	padding-inline: max(var(--pad), var(--safe-left-css), var(--safe-right-css));
 }
 
 /* 4. buy back vertical space on a phone in landscape */
 @media (max-height: 480px) {
 	body.shell .shell-nav {
 		padding-block: var(--sp-4);
-		padding-block-end: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
+		padding-block-end: calc(var(--sp-4) + var(--safe-bottom-css));
 	}
 
 	body.shell .shell-nav > * {

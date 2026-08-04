@@ -13,6 +13,8 @@ export interface HistoryEntry {
 	artist: string | null;
 	thumbnail: string | null;
 	plays: number;
+	/** The link it came from, so the same one asks before downloading twice. */
+	url: string | null;
 }
 
 const KEY = 'mp3fy-history';
@@ -21,8 +23,8 @@ function load(): HistoryEntry[] {
 	try {
 		const raw = JSON.parse(localStorage.getItem(KEY) ?? '[]');
 		if (!Array.isArray(raw)) return [];
-		// Entries written before artist/thumbnail/plays existed get defaults.
-		return raw.map((e) => ({ artist: null, thumbnail: null, plays: 0, ...e }));
+		// Entries written before artist/thumbnail/plays/url existed get defaults.
+		return raw.map((e) => ({ artist: null, thumbnail: null, plays: 0, url: null, ...e }));
 	} catch {
 		return [];
 	}
@@ -41,6 +43,7 @@ export function addToHistory(opts: {
 	size: number | null;
 	artist?: string | null;
 	thumbnail?: string | null;
+	url?: string | null;
 }): HistoryEntry {
 	const entry: HistoryEntry = {
 		id: crypto.randomUUID(),
@@ -52,7 +55,8 @@ export function addToHistory(opts: {
 		date: new Date().toISOString(),
 		artist: opts.artist ?? null,
 		thumbnail: opts.thumbnail ?? null,
-		plays: 0
+		plays: 0,
+		url: opts.url ?? null
 	};
 	// Re-downloading the same file replaces the old row instead of stacking.
 	history.entries = [entry, ...history.entries.filter((e) => e.path !== entry.path)];

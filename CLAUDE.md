@@ -33,14 +33,19 @@ trimmed: no Node-server build target, desktop first.
   playback survives tab navigation; Media Session wiring gives OS media
   controls / mobile notification player where the webview supports it. Local
   files play via `convertFileSrc` — requires the asset protocol scope in
-  tauri.conf.json. Shuffle/repeat/volume persist to `mp3fy-player` — there is
+  tauri.conf.json. Every `play()` goes through `begin()`, which swallows the
+  AbortError a track change always produces (it was filling the Logs screen)
+  and logs everything else; an `error` listener names the file that would not
+  decode, because "the player just stopped" had no other trace. Shuffle/repeat/volume persist to `mp3fy-player` — there is
   no mute toggle, a volume slider at zero is silence; `play()`
   opens the overlay, the internal `start()` doesn't (auto-advance must not
   throw the big player over what you were doing). The big player is a global
   overlay in +layout.svelte (player.expanded) washed in the cover art,
-  blurred; vertical swipe (and wheel) walks tracks — pointer capture is
-  required or the cover starts a native image drag, and both drag surfaces
-  set `user-select: none`. Its top corner holds the only two non-transport
+  blurred; a sideways swipe (and a trackpad's horizontal wheel) walks tracks
+  while a downward one minimises — the axis is locked once per drag, and both
+  used to change track, which left the dismissal gesture every phone teaches
+  landing on the previous song. Pointer capture is required or the cover
+  starts a native image drag, and both drag surfaces set `user-select: none`. Its top corner holds the only two non-transport
   controls: a volume popover and one options menu (shuffle + the three repeat
   modes) — the volume slider is vertical (`writing-mode: vertical-lr` +
   `direction: rtl`, physical width/height on purpose) and its popover needs a
@@ -63,7 +68,25 @@ trimmed: no Node-server build target, desktop first.
   reason. The mute switch stays MTUI's, never a second one.
 - Output goes to Downloads/mp3fy (`tools::downloads_dir`). History is
   localStorage (`src/lib/history.svelte.ts`) with artist/thumbnail (fetched
-  in parallel with each download via fetch_info) and play counts.
+  in parallel with each download via fetch_info), play counts and the source
+  URL — that last one is what lets a repeated link ask "already downloaded,
+  again?" instead of quietly fetching it twice (`download.duplicate`, answered
+  by `redownload`/`keepExisting`; the dialog is in +layout because a shared
+  link can land on any screen). The default audio format is `best (original)`,
+  which converts nothing: every artefact and clipped ending came from the mp3
+  re-encode, so quality (a bitrate for an encode) only shows when the chosen
+  format actually converts.
+- Showing a produced file is two different actions: desktop reveals it in the
+  file manager, Android hands it to another app through a FileProvider intent
+  (`YtdlpPlugin.openFile`) — `revealItemInDir` is unsupported there and its
+  failure was being reported as "file no longer exists". `$lib/share` owns
+  both (`revealFile`, `showFile`, `openLabel`) and only claims a file is
+  missing after `file_exists` says so.
+- Nothing may paint against a window edge: spend `--safe-*-css` from app.css
+  §0, never raw `env(safe-area-inset-*)`. On Android WebView env() reports the
+  display cutout and *not* the system bars, so the real insets come from
+  Kotlin (`YtdlpPlugin.insets` → `platform::safe_area_insets` →
+  `src/lib/safe-area.ts`). "Safe areas" in `docs/android.md`.
 - Tool checks are cached per session in `tools::CACHE` — first ensure probes
   or installs, later downloads start instantly. `tools_report` is the opposite
   and feeds Settings → Developer → Tools: it probes, installs nothing, and says

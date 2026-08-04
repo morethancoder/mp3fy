@@ -30,8 +30,9 @@
 		setVolume,
 		type RepeatMode
 	} from '$lib/player.svelte';
-	import { initDownloads } from '$lib/downloads.svelte';
+	import { download, initDownloads, keepExisting, redownload } from '$lib/downloads.svelte';
 	import { initSharedLinks } from '$lib/shared-links';
+	import { initSafeArea } from '$lib/safe-area';
 	import { formatTime } from '$lib/format';
 
 	let { children } = $props();
@@ -60,16 +61,29 @@
 
 	const volumePct = $derived(Math.round(player.volume * 100));
 
-	/* ---- Vertical swipe: up for the next track, down for the previous ----
-	   The gesture is the point of a full-screen player on a phone, and the
-	   wheel branch gives the same move a trackpad. Both share one cooldown so
-	   a single flick can't skip three tracks. */
+	/* ---- Swipe: sideways for the track, down to put the player away ----
+	   Both axes used to change track, which left no gesture for "close" and
+	   made the wrong one dangerous: the flick you make to dismiss a
+	   full-screen player on any phone threw you onto the previous track
+	   instead. Sideways is the record shelf, down is the way out — the same
+	   pair every music player on a phone uses.
+
+	   The axis is decided once, at the start of the drag, and the rest of the
+	   gesture belongs to it: a swipe left that sags a little must not turn
+	   into a dismissal halfway through. The wheel branch gives a trackpad the
+	   sideways half; one cooldown keeps a single flick from skipping three
+	   tracks. */
 
 	const SWIPE = 64; // px of travel before the gesture counts
-	let dragFrom: number | null = null;
+	const AXIS_LOCK = 12; // px before the drag decides which way it is going
+	let dragFrom: { x: number; y: number } | null = null;
+	let dragX = $state(0);
 	let dragY = $state(0);
+	let axis: 'x' | 'y' | null = null;
 	let wheelAt = 0;
 	let wheelSum = 0;
+
+	const dragging = $derived(dragX !== 0 || dragY !== 0);
 
 	function interactive(target: EventTarget | null): boolean {
 		return !!(target as HTMLElement | null)?.closest?.('input, button, a, [role="button"]');
@@ -78,32 +92,54 @@
 	function onPointerDown(e: PointerEvent) {
 		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		if (interactive(e.target)) return; // the seek bar owns its own drag
-		dragFrom = e.clientY;
+		dragFrom = { x: e.clientX, y: e.clientY };
+		axis = null;
 		// Capture, or the cover art starts a native image drag one move in and
 		// the browser swallows the rest of the gesture.
 		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
 	}
 
 	function onPointerMove(e: PointerEvent) {
-		if (dragFrom == null) return;
-		dragY = e.clientY - dragFrom;
+		if (!dragFrom) return;
+		const dx = e.clientX - dragFrom.x;
+		const dy = e.clientY - dragFrom.y;
+		if (!axis) {
+			if (Math.abs(dx) < AXIS_LOCK && Math.abs(dy) < AXIS_LOCK) return;
+			axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+		}
+		if (axis === 'x') dragX = dx;
+		// Upwards there is nothing to reveal — the player is already the whole
+		// screen — so only the downward half of the axis follows the finger.
+		else dragY = Math.max(0, dy);
 	}
 
 	function onPointerUp(e: PointerEvent) {
-		if (dragFrom == null) return;
-		const travelled = dragY;
+		if (!dragFrom) return;
+		const travelledX = dragX;
+		const travelledY = dragY;
+		const settled = axis;
 		dragFrom = null;
+		axis = null;
+		dragX = 0;
 		dragY = 0;
 		const surface = e.currentTarget as HTMLElement;
 		if (surface.hasPointerCapture(e.pointerId)) surface.releasePointerCapture(e.pointerId);
-		if (travelled <= -SWIPE) next();
-		else if (travelled >= SWIPE) previous();
+		if (settled === 'y') {
+			if (travelledY >= SWIPE) collapse();
+			return;
+		}
+		// Physical direction, in both writing directions: the track you are
+		// pushing off the screen is the one you are leaving.
+		if (travelledX <= -SWIPE) next();
+		else if (travelledX >= SWIPE) previous();
 	}
 
 	function onWheel(e: WheelEvent) {
+		// Horizontal only: a trackpad's two-finger sideways flick is the same
+		// gesture as the touch one. A mouse wheel scrolls nothing here.
 		const now = e.timeStamp;
 		if (now - wheelAt > 400) wheelSum = 0; // new flick, not the same one
-		wheelSum += e.deltaY;
+		wheelSum += e.deltaX;
 		if (Math.abs(wheelSum) < 120) return;
 		wheelAt = now;
 		if (wheelSum > 0) next();
@@ -126,7 +162,25 @@
 		if (travelled <= -32) expand();
 	}
 
+	/**
+	 * The duplicate question, asked from the layout for the same reason the
+	 * job lives there: a shared link can arrive on any screen, and the answer
+	 * decides what a running queue does next.
+	 */
+	let duplicateDialog = $state<HTMLDialogElement | null>(null);
+
+	$effect(() => {
+		const dialog = duplicateDialog;
+		if (!dialog) return;
+		if (download.duplicate && !dialog.open) dialog.showModal();
+		else if (!download.duplicate && dialog.open) dialog.close();
+	});
+
 	onMount(() => {
+		// The system bars are not visible to CSS on Android; this measures them
+		// and hands them to app.css. Before anything paints against an edge.
+		const stopSafeArea = initSafeArea();
+
 		// Subscribed once, for the life of the app: a download keeps running
 		// and still lands in History while the user browses other tabs.
 		initDownloads();
@@ -152,7 +206,11 @@
 		}
 
 		// Someone on "System" who changes their OS theme should see this follow.
-		return watchSystemTheme(() => applyTheme(loadTheme()));
+		const stopThemeWatch = watchSystemTheme(() => applyTheme(loadTheme()));
+		return () => {
+			stopSafeArea();
+			stopThemeWatch();
+		};
 	});
 
 	function current(path: string, exact = false): 'page' | undefined {
@@ -251,6 +309,35 @@
 		</div>
 	{/if}
 </main>
+
+<!-- Already downloaded? Ask, rather than quietly fetch it twice or quietly
+     refuse to. Esc and the backdrop mean "keep what I have" — the same as the
+     escape-hatch button, which never wears the accent: that belongs to the
+     action that commits, and here that is downloading again. -->
+<dialog
+	class="dialog"
+	id="duplicate-dialog"
+	bind:this={duplicateDialog}
+	onclose={keepExisting}
+>
+	{#if download.duplicate}
+		{@const existing = download.duplicate.entry}
+		<div class="stack" data-gap="20">
+			<div class="stack" data-gap="4">
+				<span class="t-card">{m().home.duplicateTitle}</span>
+				<p class="t-secondary dupe-title">{m().home.duplicateBody(existing.title)}</p>
+			</div>
+			<div class="row" data-gap="8" data-align="between">
+				<button class="btn" onclick={keepExisting} data-feedback="tick">
+					{m().home.duplicateKeep}
+				</button>
+				<button class="btn" data-variant="primary" onclick={redownload} data-feedback="tick">
+					{m().home.duplicateAgain}
+				</button>
+			</div>
+		</div>
+	{/if}
+</dialog>
 
 {#if player.current && player.expanded}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -376,10 +463,10 @@
 		     decides. -->
 		<div
 			class="stack bigplayer-body"
-			class:dragging={dragY !== 0}
+			class:dragging
 			data-gap="20"
 			data-align="center"
-			style:translate="0 {dragY * 0.4}px"
+			style:translate="{dragX * 0.6}px {dragY * 0.4}px"
 		>
 			<span class="artwork">
 				{#if player.current.thumbnail}
@@ -516,20 +603,37 @@
 		text-align: start;
 		cursor: pointer;
 	}
+	/* Bilingual titles run long; the question must not grow to fit one. */
+	.dupe-title {
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		overflow-wrap: anywhere;
+	}
 	.bigplayer {
 		position: fixed;
 		inset: 0;
 		z-index: 40;
 		display: grid;
 		place-items: center;
-		padding: var(--pad);
+		/* The overlay covers the tab bar and the status bar with it, so it is
+		   on its own for the insets the shell would otherwise have handled. */
+		padding: calc(var(--pad) + var(--safe-top-css)) calc(var(--pad) + var(--safe-right-css))
+			calc(var(--pad) + var(--safe-bottom-css)) calc(var(--pad) + var(--safe-left-css));
 		background: var(--bg);
 		overflow: hidden;
-		/* The screen is the gesture surface: vertical drags change track, so
-		   the browser must not claim them for panning. Horizontal is left
-		   alone — native controls (the seek bar) still behave. */
-		touch-action: pan-x;
+		/* The screen is the gesture surface in both axes now — sideways for
+		   the track, down to dismiss — so the browser must not claim either
+		   for panning. The seek bar takes its own back below. */
+		touch-action: none;
 		user-select: none;
+	}
+	/* A range input dragged with a finger needs the browser to leave the
+	   gesture alone; `none` is what a slider wants anyway. */
+	.bigplayer .seek {
+		touch-action: none;
 	}
 	/* Dragging the cover must swipe the player, not lift the image out of it. */
 	.bigplayer img {
@@ -572,15 +676,18 @@
 	.now-title .t-card {
 		overflow-wrap: anywhere;
 	}
+	/* Pinned to the corners, which on a phone is where the clock and the
+	   camera are — these two spend the safe insets so the buttons stay
+	   reachable and visible rather than sliding under the status bar. */
 	.bigplayer-close {
 		position: absolute;
-		inset-block-start: var(--pad);
-		inset-inline-start: var(--pad);
+		inset-block-start: calc(var(--pad) + var(--safe-top-css));
+		inset-inline-start: calc(var(--pad) + var(--safe-left-css));
 	}
 	.bigplayer-actions {
 		position: absolute;
-		inset-block-start: var(--pad);
-		inset-inline-end: var(--pad);
+		inset-block-start: calc(var(--pad) + var(--safe-top-css));
+		inset-inline-end: calc(var(--pad) + var(--safe-right-css));
 		width: auto;
 	}
 	/* A definite width, not `auto`: menu.js anchors popovers by writing

@@ -4,7 +4,11 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Environment
+import android.webkit.MimeTypeMap
 import android.webkit.WebView
+import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -46,6 +50,11 @@ class RunArgs {
 @InvokeArg
 class CancelArgs {
     var processId: String = "mp3fy"
+}
+
+@InvokeArg
+class OpenArgs {
+    lateinit var path: String
 }
 
 @InvokeArg
@@ -151,6 +160,85 @@ class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
         ret.put("text", sharedText)
         sharedText = null
         invoke.resolve(ret)
+    }
+
+    /**
+     * How much of the screen the system is sitting on, in CSS pixels.
+     *
+     * The web platform has an answer for this — `env(safe-area-inset-*)` — and
+     * MoreThanUI's shell already uses it. On Android WebView it is not enough:
+     * those values only ever describe the *display cutout*, and the status and
+     * navigation bars are invisible to CSS. MainActivity draws the app edge to
+     * edge, so without this the header sits under the clock and the player's
+     * close button lands on the notch.
+     *
+     * The IME is deliberately not included: a keyboard sliding up must not
+     * repaint the whole shell.
+     */
+    @Command
+    fun insets(invoke: Invoke) {
+        activity.runOnUiThread {
+            try {
+                val bars = ViewCompat.getRootWindowInsets(activity.window.decorView)?.getInsets(
+                    WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+                )
+                val density = activity.resources.displayMetrics.density
+                invoke.resolve(JSObject().apply {
+                    put("top", (bars?.top ?: 0) / density)
+                    put("bottom", (bars?.bottom ?: 0) / density)
+                    put("left", (bars?.left ?: 0) / density)
+                    put("right", (bars?.right ?: 0) / density)
+                })
+            } catch (e: Exception) {
+                invoke.reject(describe(e, "the window insets could not be read"))
+            }
+        }
+    }
+
+    /**
+     * Hand a finished file to whatever app can play or show it.
+     *
+     * Desktop reveals the file in the file manager; Android has no such thing,
+     * and the opener plugin says as much — `reveal_item_in_dir` is documented
+     * unsupported here and simply fails, which the UI used to report as "file
+     * no longer exists on disk" over a file that was sitting right there.
+     *
+     * Sending the path straight out would not work either: a `file://` URI in
+     * an intent is a FileUriExposedException since API 24. The FileProvider in
+     * the manifest is what turns it into a `content://` URI the receiving app
+     * is granted permission to read.
+     */
+    @Command
+    fun openFile(invoke: Invoke) {
+        val args = invoke.parseArgs(OpenArgs::class.java)
+        try {
+            val file = File(args.path)
+            if (!file.isFile) {
+                invoke.reject("the file is no longer on this device")
+                return
+            }
+            val uri = FileProvider.getUriForFile(
+                activity,
+                "${activity.packageName}.fileprovider",
+                file
+            )
+            val extension = file.extension.lowercase()
+            val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+                ?: "application/octet-stream"
+            val view = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            // A chooser rather than a bare ACTION_VIEW: it never throws when
+            // nothing on the device claims the type, and "open with" is the
+            // honest wording for handing a file to another app.
+            val chooser = Intent.createChooser(view, file.name)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            activity.startActivity(chooser)
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject(describe(e, "no app on this device could open the file"))
+        }
     }
 
     /**

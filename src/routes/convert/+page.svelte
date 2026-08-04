@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { open as openDialog } from '@tauri-apps/plugin-dialog';
-	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import {
 		isTauri,
 		isAndroid,
@@ -11,8 +10,10 @@
 		onJobEvents,
 		type ProgressEvent
 	} from '$lib/api';
+	// Not AUDIO_FORMATS: "best (original)" is a download's answer — a
+	// conversion has to name the container it is converting into.
 	import {
-		AUDIO_FORMATS,
+		CONVERT_FORMATS,
 		QUALITIES,
 		QUALITY_LABEL_KEYS,
 		type MediaFormat
@@ -20,7 +21,7 @@
 	import { m } from '$lib/i18n.svelte';
 	import { addToHistory, type HistoryEntry } from '$lib/history.svelte';
 	import { play } from '$lib/player.svelte';
-	import { shareFile } from '$lib/share';
+	import { openLabel, shareFile, showFile } from '$lib/share';
 	import { chime } from '$lib/feedback';
 	import { formatBytes, titleFromPath } from '$lib/format';
 
@@ -153,7 +154,7 @@
 								<span class="t-label">{m().convert.targetFormat}</span>
 								<span class="select">
 									<select bind:value={format} disabled={busy}>
-										{#each AUDIO_FORMATS as f (f)}
+										{#each CONVERT_FORMATS as f (f)}
 											<option value={f}>{f}</option>
 										{/each}
 									</select>
@@ -232,8 +233,8 @@
 					<button class="btn" data-variant="primary" onclick={playIt}>
 						{m().done.play}
 					</button>
-					<button class="btn" onclick={() => revealItemInDir(finished!.path)}>
-						{m().done.openInFiles}
+					<button class="btn" onclick={() => showFile(finished!.path)}>
+						{openLabel()}
 					</button>
 					<button class="btn" onclick={share}>
 						<span class="icon" data-icon="share"></span>

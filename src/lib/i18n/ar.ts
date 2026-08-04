@@ -24,9 +24,15 @@ export const ar: Messages = {
 		queuedCount: (n: number) => (n === 1 ? 'رابط واحد في الانتظار' : `${n} روابط في الانتظار`),
 		options: 'خيارات',
 		format: 'الصيغة',
+		formatBest: 'الأفضل (الأصلية)',
 		quality: 'الجودة',
+		qualityHelp: 'تُطبَّق عند التحويل فقط — خيار «الأفضل (الأصلية)» لا يعيد الترميز إطلاقاً.',
 		audioFormats: 'صوت',
 		videoFormats: 'فيديو',
+		duplicateTitle: 'لديك هذا الملف بالفعل',
+		duplicateBody: (title: string) => `«${title}» جاء من هذا الرابط.`,
+		duplicateAgain: 'تنزيله مجدداً',
+		duplicateKeep: 'الاحتفاظ بالملف الحالي',
 		getAudio: 'تنزيل الصوت',
 		getVideo: 'تنزيل الفيديو',
 		cancel: 'إلغاء',
@@ -40,6 +46,7 @@ export const ar: Messages = {
 		fetching: 'جارٍ جلب معلومات الفيديو…',
 		downloading: 'جارٍ التنزيل',
 		converting: (format: string) => `جارٍ التحويل إلى ${format} — أوشكنا على الانتهاء…`,
+		finishing: 'جارٍ حفظ الصوت — أوشكنا على الانتهاء…',
 		eta: (eta: string) => `متبقٍ ${eta}`,
 		of: (size: string) => `من ${size}`
 	},
@@ -47,6 +54,7 @@ export const ar: Messages = {
 	done: {
 		play: 'تشغيل',
 		openInFiles: 'فتح في الملفات',
+		openWith: 'فتح بواسطة…',
 		share: 'مشاركة',
 		more: 'إجراءات أخرى',
 		dismiss: 'إخفاء',
@@ -76,6 +84,7 @@ export const ar: Messages = {
 		remove: 'إزالة',
 		removed: 'أُزيل',
 		missing: 'الملف لم يعد موجوداً على القرص',
+		openFailed: 'لا يوجد تطبيق على هذا الجهاز يستطيع فتح هذا الملف',
 		addToPlaylist: 'إضافة إلى قائمة تشغيل',
 		playlistName: 'اسم قائمة التشغيل',
 		create: 'إنشاء',
@@ -101,7 +110,8 @@ export const ar: Messages = {
 		repeatAll: 'تكرار الكل',
 		repeatOne: 'تكرار المقطع',
 		volume: 'مستوى الصوت',
-		swipeHint: 'اسحب للأعلى للمقطع التالي'
+		swipeHint: 'اسحب يميناً أو يساراً لتغيير المقطع، وللأسفل لتصغير المشغّل',
+		failed: 'تعذّر تشغيل هذا الملف'
 	},
 
 	convert: {

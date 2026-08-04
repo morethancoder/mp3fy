@@ -3,7 +3,6 @@
 	import 'morethanui/js/x-contextmenu.js';
 	import { goto } from '$app/navigation';
 	import { readText } from '@tauri-apps/plugin-clipboard-manager';
-	import { revealItemInDir } from '@tauri-apps/plugin-opener';
 	import { isTauri } from '$lib/api';
 	import { download, startJob, cancelJob, clearJob } from '$lib/downloads.svelte';
 	import {
@@ -13,11 +12,13 @@
 		VIDEO_FORMATS,
 		QUALITIES,
 		QUALITY_LABEL_KEYS,
-		formatKind
+		converts,
+		formatKind,
+		formatLabel
 	} from '$lib/settings.svelte';
 	import { m } from '$lib/i18n.svelte';
 	import { play } from '$lib/player.svelte';
-	import { shareFile } from '$lib/share';
+	import { openLabel, shareFile, showFile } from '$lib/share';
 	import { formatBytes } from '$lib/format';
 
 	let resultMenu = $state<HTMLElement | null>(null);
@@ -39,7 +40,11 @@
 				return parts.join(' ');
 			}
 			case 'converting':
-				return m().steps.converting(download.format);
+				// "Converting to best" would be a lie — that format converts
+				// nothing, it just lifts the audio out of what arrived.
+				return download.format === 'best'
+					? m().steps.finishing
+					: m().steps.converting(download.format);
 		}
 	});
 
@@ -79,9 +84,7 @@
 
 	async function reveal() {
 		if (!download.finished) return;
-		await revealItemInDir(download.finished.path).catch(() =>
-			window.mtui?.toast(m().library.missing, { kind: 'error' })
-		);
+		await showFile(download.finished.path);
 	}
 
 	async function share() {
@@ -184,7 +187,7 @@
 										<select bind:value={settings.format} onchange={saveSettings}>
 											<optgroup label={m().home.audioFormats}>
 												{#each AUDIO_FORMATS as f (f)}
-													<option value={f}>{f}</option>
+													<option value={f}>{formatLabel(f)}</option>
 												{/each}
 											</optgroup>
 											<optgroup label={m().home.videoFormats}>
@@ -196,7 +199,10 @@
 									</span>
 								</label>
 							</x-select>
-							{#if kind === 'audio'}
+							<!-- Quality describes an encode; the original format
+							     does none, so the control goes away rather than
+							     sit there pretending to do something. -->
+							{#if converts(settings.format)}
 								<x-select>
 									<label class="field">
 										<span class="t-label">{m().home.quality}</span>
@@ -297,7 +303,7 @@
 						</button>
 					{:else}
 						<button class="btn" data-variant="primary" data-feedback="tick" onclick={reveal}>
-							{m().done.openInFiles}
+							{openLabel()}
 						</button>
 					{/if}
 					<span
@@ -316,7 +322,7 @@
 			</div>
 			<template>
 				{#if file.kind === 'audio'}
-					<button class="menu-item" data-value="reveal">{m().done.openInFiles}</button>
+					<button class="menu-item" data-value="reveal">{openLabel()}</button>
 				{:else}
 					<button class="menu-item" data-value="play">{m().done.play}</button>
 				{/if}

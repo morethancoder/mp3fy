@@ -32,9 +32,18 @@ export const en = {
 			n === 1 ? '1 more link waiting' : `${n} more links waiting`,
 		options: 'Options',
 		format: 'Format',
+		// The audio the site already serves, saved as it arrives. Converting is
+		// what costs quality, so the option that does none of it says so.
+		formatBest: 'best (original)',
 		quality: 'Quality',
+		qualityHelp: 'Only applies when converting — “best (original)” never re-encodes.',
 		audioFormats: 'Audio',
 		videoFormats: 'Video',
+		// Asked when a link has already produced a file that is still on disk.
+		duplicateTitle: 'You already have this',
+		duplicateBody: (title: string) => `“${title}” came from this link.`,
+		duplicateAgain: 'Download again',
+		duplicateKeep: 'Keep the one I have',
 		getAudio: 'Get audio',
 		getVideo: 'Get video',
 		cancel: 'Cancel',
@@ -48,6 +57,9 @@ export const en = {
 		fetching: 'Fetching video info…',
 		downloading: 'Downloading',
 		converting: (format: string) => `Converting to ${format} — almost there…`,
+		// Nothing is being converted to anything: the audio is being lifted out
+		// of what the site served, untouched.
+		finishing: 'Saving the audio — almost there…',
 		eta: (eta: string) => `${eta} left`,
 		of: (size: string) => `of ${size}`
 	},
@@ -55,6 +67,9 @@ export const en = {
 	done: {
 		play: 'Play',
 		openInFiles: 'Open in Files',
+		// Android has no file manager to reveal into: the file is handed to
+		// whichever app can play or show it.
+		openWith: 'Open with…',
 		share: 'Share',
 		more: 'More actions',
 		dismiss: 'Dismiss',
@@ -85,6 +100,7 @@ export const en = {
 		remove: 'Remove',
 		removed: 'Removed',
 		missing: 'File no longer exists on disk',
+		openFailed: 'No app on this device can open this file',
 		addToPlaylist: 'Add to playlist',
 		playlistName: 'Playlist name',
 		create: 'Create',
@@ -111,7 +127,8 @@ export const en = {
 		repeatAll: 'Repeat all',
 		repeatOne: 'Repeat one',
 		volume: 'Volume',
-		swipeHint: 'Swipe up for the next track'
+		swipeHint: 'Swipe sideways to change track, down to minimise',
+		failed: 'This file could not be played'
 	},
 
 	convert: {
