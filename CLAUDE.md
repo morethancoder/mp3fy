@@ -105,7 +105,11 @@ trimmed: no Node-server build target, desktop first.
   gives dependencies no debug info at all (6.5GB → 1.4GB; our own frames keep
   line tables, so backtraces still name file and line). Run `make clean` after
   a debugging or emulator session — it takes the Gradle output too, and prints
-  what it freed.
+  what it freed. There is one emulator for every project on this machine, an
+  AVD named `phone` (medium phone, 1080×2400 @420dpi, API 35 google_apis,
+  host GPU) — never create a per-project AVD, four of them had reached 19GB.
+  Launch it with `-no-snapshot` so it cannot accumulate boot snapshots:
+  `~/Library/Android/sdk/emulator/emulator -avd phone -no-snapshot -no-audio`.
 
 The Makefile is the CLI (one-word targets, `##` self-docs, run bare `make`
 for the list): `make dev` runs the desktop app, `make web` just the UI in a
