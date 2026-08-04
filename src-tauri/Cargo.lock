@@ -2197,7 +2197,7 @@ dependencies = [
 
 [[package]]
 name = "mp3fy"
-version = "0.2.5"
+version = "0.3.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",

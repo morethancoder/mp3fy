@@ -1,6 +1,6 @@
 [package]
 name = "mp3fy"
-version = "0.2.5"
+version = "0.3.0"
 description = "Turn any video link into a local audio file, powered by yt-dlp"
 license = "MIT"
 edition = "2021"
