@@ -106,6 +106,34 @@ it and no future build can ever update an installed mp3fy — every user has to
 uninstall first. The GitHub secret is a copy, so it is a backup of last
 resort, not a plan.
 
+## 16 KB page sizes
+
+Newer Android hardware (15+) uses 16 KB memory pages. The ffmpeg that
+youtubedl-android 0.18.1 *unpacks at runtime* is built with 4 KB alignment, so
+the linker refuses it outright:
+
+```
+"…/packages/ffmpeg/usr/lib/libwebp.so" program alignment (4096)
+cannot be smaller than system page size (16384)
+CANNOT LINK EXECUTABLE ".../ffprobe"
+```
+
+The library declares 16 KB support from 0.18.0, and its *APK* libraries are
+aligned — but Play's tooling only checks those, not the payload extracted at
+runtime, so the ffmpeg that actually runs was never rebuilt. Bumping the
+version does not help, and Android will not execute an ffmpeg downloaded at
+runtime (W^X), so mp3fy cannot fetch a corrected one either. Fixing it
+properly means shipping our own 16 KB-aligned ffmpeg build.
+
+Until then the app **degrades instead of failing**: yt-dlp only needs ffmpeg
+to *convert*, so when ffmpeg cannot run, the download is retried asking for
+the audio the site already serves (`-f bestaudio`) and the file keeps its own
+container — usually opus in `.webm`, which the webview plays. The library row
+shows the real format, not the one that was requested.
+
+Verified on both: API 35 (4 KB) produces the requested mp3; API 37 `ps16k`
+(16 KB) produces a playable `.webm`.
+
 ## Not done yet
 
 - **Play Store**: needs an AAB, a developer account, and a policy argument

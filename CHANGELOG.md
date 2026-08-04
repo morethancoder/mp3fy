@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.2.3 — 2026-08-04
+
+- **Downloads work on 16 KB-page devices.** The bundled ffmpeg cannot load
+  there at all (its libraries are 4 KB-aligned and the linker refuses them),
+  and yt-dlp only needs ffmpeg to *convert* — so when it cannot run, the
+  download now falls back to the audio the site already serves and keeps that
+  container, instead of failing after downloading. The library row shows the
+  format that was actually produced.
+- Fixed a path parser that accepted any `[download] …` line as the finished
+  file, so a download with no conversion step ended up named after a progress
+  line.
+
+Verified on API 35 (4 KB pages → mp3, as asked) and API 37 `ps16k` (16 KB
+pages → a playable `.webm`).
+
 ## v0.2.2 — 2026-08-04
 
 Android fixes found by testing the shipped APK rather than a dev build.

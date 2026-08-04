@@ -82,9 +82,15 @@ export function initDownloads(): void {
 			download.busy = false;
 			download.progress = null;
 			if (f.path) {
+				// What actually came back, not what was asked for: Android
+				// falls back to the site's own audio format when it cannot
+				// run ffmpeg, and the library should not call an m4a an mp3.
+				// The kind is still whatever was requested — an audio-only
+				// webm is audio, however much the extension suggests video.
+				const ext = f.path.split('.').pop()?.toLowerCase();
 				download.finished = addToHistory({
 					path: f.path,
-					format: download.format,
+					format: ext && ext.length <= 4 ? ext : download.format,
 					kind: download.kind,
 					size: f.size,
 					artist: info?.uploader ?? null,

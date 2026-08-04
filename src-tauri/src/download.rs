@@ -85,11 +85,14 @@ fn parse_destination(line: &str) -> Option<String> {
     if let Some(rest) = line.strip_prefix("[Merger] Merging formats into \"") {
         return Some(rest.trim_end_matches('"').to_string());
     }
-    if let Some(rest) = line.split(" has already been downloaded").next() {
+    // `split(..).next()` returns the whole line when the separator is absent,
+    // so this used to accept *any* "[download] …" line as a path — including
+    // progress lines. Nothing noticed while a post-processing step printed a
+    // real Destination afterwards and overwrote it; with no conversion to do,
+    // "100% of 246.27KiB" became the file name.
+    if let Some((rest, _)) = line.split_once(" has already been downloaded") {
         if let Some(path) = rest.strip_prefix("[download] ") {
-            if !path.contains("Destination") {
-                return Some(path.trim().to_string());
-            }
+            return Some(path.trim().to_string());
         }
     }
     None
@@ -187,7 +190,7 @@ pub async fn start_download(
 
     #[cfg(target_os = "android")]
     {
-        return start_on_android(app, args, url);
+        return start_on_android(app, args, url, kind);
     }
 
     #[cfg(not(target_os = "android"))]
@@ -203,27 +206,84 @@ pub async fn start_download(
     }
 }
 
+/// Ask for the best audio the site already serves, converting nothing. The
+/// file keeps whatever container it arrived in — m4a or opus — which every
+/// Android webview can play.
+#[cfg(target_os = "android")]
+fn native_audio_args(app: &AppHandle, url: &str) -> Vec<String> {
+    let dest = tools::downloads_dir(app).unwrap_or_default();
+    let mut args: Vec<String> = ["-f", "bestaudio/best", "--newline", "--no-playlist", "--no-mtime"]
+        .map(String::from)
+        .to_vec();
+    args.push("-o".into());
+    args.push(dest.join("%(title)s.%(ext)s").to_string_lossy().into_owned());
+    args.push(url.to_string());
+    args
+}
+
+/// Does this failure mean "ffmpeg could not run"?
+///
+/// It has several faces: yt-dlp saying it cannot find the programs, the
+/// TypeError it raises when ffprobe came back as None, and the linker
+/// refusing a library outright — which is what happens on devices with 16KB
+/// memory pages, since the bundled ffmpeg's libraries are 4KB aligned.
+#[cfg(target_os = "android")]
+fn is_ffmpeg_failure(message: &str) -> bool {
+    let m = message.to_lowercase();
+    m.contains("ffmpeg not found")
+        || m.contains("ffprobe and ffmpeg not found")
+        || m.contains("os.pathlike object, not nonetype")
+        || m.contains("cannot link executable")
+        || m.contains("program alignment")
+}
+
 /// Android: the engine owns the process, so there is no child to hold and no
 /// pipes to read — lines arrive on a channel and the job is done when the
 /// call returns.
 #[cfg(target_os = "android")]
-fn start_on_android(app: AppHandle, mut args: Vec<String>, url: String) -> Result<(), String> {
+fn start_on_android(
+    app: AppHandle,
+    mut args: Vec<String>,
+    url: String,
+    kind: String,
+) -> Result<(), String> {
     use std::sync::Mutex as StdMutex;
 
-    args.push(url);
+    args.push(url.clone());
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let reading = std::sync::Arc::new(StdMutex::new(Reading::default()));
-        let for_lines = (app2.clone(), reading.clone());
-        let result = crate::android_engine::run(&app2, args, move |line| {
-            let (app, reading) = &for_lines;
-            log("yt-dlp", line.clone());
-            read_line(app, &line, &mut reading.lock().unwrap());
-        });
-        let (path, last_error) = {
+        let run = |args: Vec<String>| {
+            let reading = std::sync::Arc::new(StdMutex::new(Reading::default()));
+            let for_lines = (app2.clone(), reading.clone());
+            let result = crate::android_engine::run(&app2, args, move |line| {
+                let (app, reading) = &for_lines;
+                log("yt-dlp", line.clone());
+                read_line(app, &line, &mut reading.lock().unwrap());
+            });
             let reading = reading.lock().unwrap();
-            (reading.final_path.clone(), reading.last_error.clone())
+            (result, reading.final_path.clone(), reading.last_error.clone())
         };
+
+        let (mut result, mut path, mut last_error) = run(args);
+
+        // No ffmpeg means no converting — but it does not mean no audio.
+        // yt-dlp can save the stream the site already serves (m4a or opus),
+        // which is a playable file rather than a failed download.
+        if kind == "audio"
+            && result.is_err()
+            && is_ffmpeg_failure(last_error.as_deref().unwrap_or_default())
+        {
+            log(
+                "download",
+                "ffmpeg is unusable on this device — keeping the original audio format",
+            );
+            let native = native_audio_args(&app2, &url);
+            let (r, p, e) = run(native);
+            result = r;
+            path = p;
+            last_error = e;
+        }
+
         match result {
             Ok(()) => {
                 let path = path.unwrap_or_default();
