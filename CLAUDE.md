@@ -31,7 +31,16 @@ trimmed: no Node-server build target, desktop first.
   the tab lost the result — keep job state out of screens.
 - The player (`src/lib/player.svelte.ts`) is a module-level <audio> so
   playback survives tab navigation; Media Session wiring gives OS media
-  controls / mobile notification player where the webview supports it. Local
+  controls where the webview supports it — which on Android is nowhere. Its
+  WebView implements `navigator.mediaSession` and publishes none of it, so the
+  notification/lock-screen player there is a native MediaSession in a
+  foreground service (`MediaService.kt`, driven by
+  `src/lib/media-notification.ts` through `show_media_notification`), and its
+  buttons come back as `media:action` events — Android gets a picture of the
+  player, never control of it. State is pushed on events, never on
+  `timeupdate`; a pause waits before demoting the service, because a track
+  ending pauses too and Android will not re-promote a background service.
+  "The notification player" in `docs/android.md`. Local
   files are read once with a plain `fetch` (no Range header) and played from a
   `blob:` URL — **never point the element at `convertFileSrc` directly**: the
   asset protocol caps a range response at 1 MB and Android's webview cannot

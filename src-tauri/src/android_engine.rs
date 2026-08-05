@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::plugin::{Builder, PluginHandle, TauriPlugin};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 
 pub struct Engine(PluginHandle<Wry>);
 
@@ -211,6 +211,83 @@ pub fn open_file(app: &AppHandle, path: &str) -> Result<(), String> {
     plugin(app)?
         .0
         .run_mobile_plugin::<serde_json::Value>("openFile", OpenArgs { path: path.into() })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/* ---- The media notification ----
+
+   `navigator.mediaSession` is the whole story on desktop: the webview hands it
+   to the OS and the track turns up on the Now Playing surface. Android's
+   WebView implements the same API and publishes none of it, so a phone — the
+   one place a notification player actually matters — got nothing from it.
+
+   `MediaService.kt` is the native session that does show up. This is the two
+   directions it needs: the player's state going out, and the buttons coming
+   back. */
+
+/// A press on the notification, the lock screen or a headset button. `seek`
+/// carries a position in seconds; nothing else carries anything.
+#[derive(Clone, Deserialize, Serialize)]
+pub struct MediaAction {
+    pub action: String,
+    pub position: Option<f64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListenArgs {
+    on_action: Channel<serde_json::Value>,
+}
+
+/// Registered on the first track and never again — the plugin holds one
+/// channel, and re-registering would only replace it with an identical one.
+static LISTENING: std::sync::Once = std::sync::Once::new();
+
+fn media_listen(app: &AppHandle) -> Result<(), String> {
+    let handle = app.clone();
+    let on_action = Channel::new(move |body| {
+        if let InvokeResponseBody::Json(json) = body {
+            match serde_json::from_str::<MediaAction>(&json) {
+                Ok(action) => {
+                    let _ = handle.emit("media:action", action);
+                }
+                Err(e) => crate::logs::log("player", format!("unreadable media action: {e}")),
+            }
+        }
+        Ok(())
+    });
+
+    plugin(app)?
+        .0
+        .run_mobile_plugin::<serde_json::Value>("mediaListen", ListenArgs { on_action })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Show the notification, or bring it in line with what the player is doing.
+pub fn media_update(app: &AppHandle, state: &crate::platform::MediaState) -> Result<(), String> {
+    LISTENING.call_once(|| {
+        if let Err(e) = media_listen(app) {
+            crate::logs::log(
+                "player",
+                format!("the media notification will not answer its buttons: {e}"),
+            );
+        }
+    });
+
+    plugin(app)?
+        .0
+        .run_mobile_plugin::<serde_json::Value>("mediaUpdate", state)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Playback is over: the session and its notification go away.
+pub fn media_hide(app: &AppHandle) -> Result<(), String> {
+    plugin(app)?
+        .0
+        .run_mobile_plugin::<serde_json::Value>("mediaHide", ())
         .map(|_| ())
         .map_err(|e| e.to_string())
 }

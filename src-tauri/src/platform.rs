@@ -47,6 +47,63 @@ pub fn open_file(
     Err("opening a file this way is Android-only".into())
 }
 
+/// What the player is doing, as the notification needs to describe it.
+///
+/// Android only: every other platform gets the same surface for free, because
+/// its webview publishes `navigator.mediaSession` to the OS. Android's does
+/// not, so the state has to be carried across to a native session by hand —
+/// see `MediaService.kt`.
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaState {
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    /// A remote URL, a `data:` URI or a path — whatever the history row has.
+    pub artwork: Option<String>,
+    pub playing: bool,
+    /// Seconds; `duration` is zero while the file is still being read.
+    pub position: f64,
+    pub duration: f64,
+    pub shuffle: bool,
+    /// `off` | `all` | `one`
+    pub repeat: String,
+    pub can_next: bool,
+    pub can_previous: bool,
+}
+
+/// Put the current track on the phone's lock screen and notification shade,
+/// or bring what is already there in line with the player.
+///
+/// A no-op everywhere else, and called as one: the frontend does not branch.
+#[tauri::command]
+pub fn show_media_notification(
+    #[allow(unused_variables)] app: tauri::AppHandle,
+    #[allow(unused_variables)] state: MediaState,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::android_engine::media_update(&app, &state)
+    }
+
+    #[cfg(not(target_os = "android"))]
+    Ok(())
+}
+
+/// Playback is over — take it down again.
+#[tauri::command]
+pub fn hide_media_notification(
+    #[allow(unused_variables)] app: tauri::AppHandle,
+) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::android_engine::media_hide(&app)
+    }
+
+    #[cfg(not(target_os = "android"))]
+    Ok(())
+}
+
 /// The insets CSS cannot see. Zero everywhere but Android, where
 /// `env(safe-area-inset-*)` reports the display cutout and nothing else.
 #[tauri::command]

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -61,6 +62,12 @@ class OpenArgs {
 }
 
 @InvokeArg
+class MediaListenArgs {
+    /** Where a pressed transport button goes on its way back to the player. */
+    lateinit var onAction: Channel
+}
+
+@InvokeArg
 class InstallArgs {
     /** A yt-dlp release file Rust has already downloaded. */
     lateinit var path: String
@@ -74,9 +81,15 @@ class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
     private companion object {
         /** Where the version of an installed yt-dlp is remembered. */
         const val VERSION_KEY = "ytdlpVersion"
+
+        /** Ours, so it cannot be confused with a Tauri plugin's own request. */
+        const val NOTIFICATION_REQUEST = 0x6D33
     }
 
     private var started = false
+
+    /** The notification permission is asked about once per launch, not once per track. */
+    private var askedForNotifications = false
 
     /** Cache for [version] — the preference read is cheap, this is cheaper. */
     private var knownVersion: String? = null
@@ -294,6 +307,72 @@ class YtdlpPlugin(private val activity: Activity) : Plugin(activity) {
         } catch (e: Exception) {
             resolver.delete(uri, null, null)
             throw e
+        }
+    }
+
+    /* ---- The media notification ----
+       Android's WebView implements the Web MediaSession API and publishes none
+       of it, so `navigator.mediaSession` — which is all a desktop player needs
+       — buys a phone nothing at all. MediaService is the native session that
+       does show up; these three commands are the whole of its wiring. */
+
+    /** Show the notification, or bring it in line with the player. */
+    @Command
+    fun mediaUpdate(invoke: Invoke) {
+        val args = invoke.parseArgs(MediaArgs::class.java)
+        try {
+            askForNotifications()
+            MediaControls.update(activity, args)
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject(describe(e, "the media notification could not be shown"))
+        }
+    }
+
+    /** Playback is over — take the notification down. */
+    @Command
+    fun mediaHide(invoke: Invoke) {
+        MediaControls.hide(activity)
+        invoke.resolve()
+    }
+
+    /**
+     * Open the way back: every press on the notification, the lock screen or a
+     * headset arrives here and goes to the frontend, which owns what "next"
+     * means. Registered once, on the first track played.
+     */
+    @Command
+    fun mediaListen(invoke: Invoke) {
+        val args = invoke.parseArgs(MediaListenArgs::class.java)
+        MediaControls.onAction = { action, position ->
+            args.onAction.send(JSObject().apply {
+                put("action", action)
+                if (position != null) put("position", position)
+            })
+        }
+        invoke.resolve()
+    }
+
+    /**
+     * Ask for POST_NOTIFICATIONS, once, at the moment it first means something.
+     *
+     * Android 13 made notifications opt-in, and a permission asked for at
+     * launch — before anything has been played — is a permission that gets
+     * refused. Denied, the service still runs and the audio still plays; only
+     * the controls are missing, so the answer is never waited for.
+     */
+    private fun askForNotifications() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (askedForNotifications) return
+        askedForNotifications = true
+        val permission = android.Manifest.permission.POST_NOTIFICATIONS
+        if (activity.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return
+        activity.runOnUiThread {
+            try {
+                activity.requestPermissions(arrayOf(permission), NOTIFICATION_REQUEST)
+            } catch (e: Exception) {
+                android.util.Log.w("mp3fy", "[player] could not ask about notifications: ${e.message}")
+            }
         }
     }
 

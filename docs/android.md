@@ -214,6 +214,78 @@ because that path is still the broken one.
 other library changes nothing: they all wrap the same media element and would
 be handed the same truncated megabyte.
 
+## The notification player
+
+`$lib/player` tells `navigator.mediaSession` everything about the current
+track, and on desktop that is the whole job — the webview hands it to the OS
+and the track turns up on Now Playing, with media keys wired up. **Android's
+WebView implements the same API and publishes none of it.** Chrome shows a
+media notification for a web page because the *browser* wraps the page's
+session in a native one; a WebView has no browser around it. So on the one
+platform where a notification player really matters, the web API bought
+nothing: no shade controls, no lock screen, no headset buttons.
+
+The session is therefore built natively, and the audio stays exactly where it
+was:
+
+```
+$lib/player  (the <audio> element — still the only thing that plays anything)
+  └─ $lib/media-notification
+       ├─ show_media_notification ─► platform.rs ─► YtdlpPlugin.mediaUpdate
+       │                                              └─ MediaControls ─► MediaService
+       │                                                   MediaSessionCompat + MediaStyle
+       └─ ◄── "media:action" ◄── channel ◄── MediaControls.dispatch ◄── a button
+```
+
+Android is handed a *picture* of the player and never control of it: every
+press comes back as a `media:action` event and is acted on by the same
+functions the in-app player uses, so "next" means one thing in this app.
+`MediaService` is a foreground service for the ordinary reason — a
+backgrounded app is a candidate for being killed, and being killed mid-track
+is what a music app may not do.
+
+What is on it: cover art, title, artist, previous / play-pause / next, shuffle
+and the three repeat modes, a scrubber (Android draws one once the metadata
+carries a real duration), and tapping anywhere that is not a button opens the
+app — the launcher intent specifically, so it lands on the running task and
+not on a second copy, and is not mistaken for a shared link.
+
+Four things that must stay true:
+
+- **Position is pushed on events, not on ticks.** Android extrapolates the
+  playhead from the timestamp of the last state it was given, so a track, a
+  pause, a seek and a duration becoming known are enough; `timeupdate` at 4 Hz
+  over IPC is not. A `seeked` that is not published leaves the shade's
+  scrubber somewhere the track is not.
+- **A pause does not demote the service immediately** (`DEMOTE_AFTER_MS`).
+  Detaching the notification is what lets a user swipe a paused player away
+  before Android 14, where an ongoing foreground notification cannot be
+  dismissed at all — but a track *ending* also pauses the element for as long
+  as the next file takes to read, and demoting in that gap is unrecoverable:
+  `Background started FGS: Disallowed … code:DENIED`, and the queue plays on
+  with the process killable underneath it. A resume the user asked for is
+  exempt (`code:TEMP_ALLOWED_WHILE_IN_USE … MEDIA_SESSION_CALLBACK`), which is
+  why the delay only has to outlast the automatic kind.
+- **A failed load has to be published too.** No `pause` event follows a file
+  that would not decode, so without it the shade is left insisting it is
+  playing something that never started.
+- **The permission is asked for at the first play**, not at launch: a
+  notification permission requested before anything has been played is a
+  permission that gets refused. Denied, the service still runs and the audio
+  still plays — only the controls are missing.
+
+Verified on the emulator (API 35): controls and cover art on the shade,
+shuffle and repeat round-tripping into `mp3fy-player`, prev/next walking the
+queue, the scrubber seeking, `input keyevent 85` pausing and resuming from the
+background, a track auto-advancing in the background without losing the
+foreground service, and `keyevent 86` taking the whole thing down.
+
+```sh
+adb shell dumpsys media_session | grep -A 14 "mp3fy com.morethancoder"
+adb shell dumpsys notification --noredact | grep -A 40 "pkg=com.morethancoder.mp3fy"
+adb shell cmd statusbar expand-notifications   # then screencap
+```
+
 ## Where finished files live
 
 Downloads are *written* to `Android/data/<pkg>/files/Download/mp3fy` — no

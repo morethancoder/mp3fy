@@ -1,4 +1,18 @@
 <resources>
     <string name="app_name">"mp3fy"</string>
     <string name="main_activity_title">"mp3fy"</string>
+
+    <!-- The media notification. Only the channel name is ever read as prose,
+         in the system's notification settings; the rest label buttons that the
+         media surfaces draw as icons, and are what a screen reader announces.
+         These follow the *system* language rather than the one chosen in
+         Settings → Language, because Android is who displays them. -->
+    <string name="media_channel">Playback</string>
+    <string name="media_channel_description">Controls for the track mp3fy is playing</string>
+    <string name="media_play">Play</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_next">Next track</string>
+    <string name="media_previous">Previous track</string>
+    <string name="media_shuffle">Shuffle</string>
+    <string name="media_repeat">Repeat</string>
 </resources>

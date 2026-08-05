@@ -56,6 +56,8 @@ pub fn run() {
             platform::file_exists,
             platform::open_file,
             platform::safe_area_insets,
+            platform::show_media_notification,
+            platform::hide_media_notification,
             logs::get_logs,
             logs::log_event
         ])

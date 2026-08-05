@@ -1,0 +1,12 @@
+<resources>
+    <!-- Only the media notification. Everything else falls back to values/,
+         and the app's own interface is translated in src/lib/i18n/. -->
+    <string name="media_channel">التشغيل</string>
+    <string name="media_channel_description">أدوات التحكم في المقطع الذي يشغّله mp3fy</string>
+    <string name="media_play">تشغيل</string>
+    <string name="media_pause">إيقاف مؤقت</string>
+    <string name="media_next">المقطع التالي</string>
+    <string name="media_previous">المقطع السابق</string>
+    <string name="media_shuffle">تشغيل عشوائي</string>
+    <string name="media_repeat">تكرار</string>
+</resources>

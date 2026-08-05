@@ -104,6 +104,12 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:$youtubedlAndroid")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:$youtubedlAndroid")
 
+    // MediaSessionCompat and the MediaStyle notification. Android's WebView
+    // implements the Web MediaSession API but publishes none of it to the
+    // system, so the lock-screen player, the shade controls and headset
+    // buttons have to be built natively — see MediaService.kt.
+    implementation("androidx.media:media:1.7.0")
+
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.activity:activity-ktx:1.10.1")

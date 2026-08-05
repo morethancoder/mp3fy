@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.4.0 — 2026-08-05
+
+- **A notification player on Android.** Playing a track now puts it on the
+  notification shade and the lock screen, with cover art, previous /
+  play-pause / next, shuffle and the three repeat modes, and a scrubber;
+  tapping anywhere that is not a button opens the app. Headset and Bluetooth
+  media buttons work for the same reason.
+
+  The web `MediaSession` API mp3fy already spoke was never going to do this:
+  Android's WebView implements it and publishes none of it to the system —
+  Chrome shows a media notification for a web page because the *browser* wraps
+  the page's session in a native one, and a WebView has no browser around it.
+  So the session is now native (a foreground service, so a backgrounded app is
+  not killed mid-track) while the audio stays where it was, and every button
+  comes back to the same functions the in-app player uses.
+
+Verified on API 35, including auto-advancing to the next track with the app in
+the background — which turned out to need care, since a track ending pauses
+the player for as long as the next file takes to read, and Android will not
+let a service that gives up its foreground status take it back on its own.
+
+*(v0.3.0 and v0.3.1 shipped without entries here: Android build fixes, and
+playing whole files rather than the first megabyte of them.)*
+
 ## v0.2.3 — 2026-08-04
 
 - **Downloads work on 16 KB-page devices.** The bundled ffmpeg cannot load

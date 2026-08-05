@@ -2,8 +2,9 @@
  * One app-wide audio engine. The <audio> element lives at module level, not
  * in the player page, so playback survives navigation between tabs. The
  * Media Session hookup is what puts the track on the OS media surface —
- * lock-screen / notification player on mobile, media keys and Now Playing
- * on desktop — wherever the webview supports it.
+ * media keys and Now Playing on desktop — wherever the webview supports it,
+ * which on Android is nowhere: the notification player there is native, and
+ * `$lib/media-notification` is how this module drives it.
  */
 
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -11,6 +12,12 @@ import { isTauri, logEvent } from './api';
 import { history, incrementPlays, type HistoryEntry } from './history.svelte';
 import { mimeFor } from './format';
 import { m } from './i18n.svelte';
+import {
+	hideMedia,
+	onMediaAction,
+	publishMedia,
+	type MediaAction
+} from './media-notification';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
@@ -179,15 +186,25 @@ function engine(): HTMLAudioElement {
 		player.currentTime = audio!.currentTime;
 		updatePositionState();
 	});
-	audio.addEventListener('durationchange', () => (player.duration = audio!.duration || 0));
+	audio.addEventListener('durationchange', () => {
+		player.duration = audio!.duration || 0;
+		// The length is what puts a scrubber on the notification, and it is only
+		// known once enough of the file has been read.
+		publish();
+	});
 	audio.addEventListener('play', () => {
 		player.playing = true;
 		setSessionState('playing');
+		publish();
 	});
 	audio.addEventListener('pause', () => {
 		player.playing = false;
 		setSessionState('paused');
+		publish();
 	});
+	// Android extrapolates the playhead from the last state it was given, so a
+	// jump has to be announced; the steady ticking does not.
+	audio.addEventListener('seeked', publish);
 	audio.addEventListener('ended', () => {
 		if (player.repeat === 'one') {
 			seek(0);
@@ -206,6 +223,10 @@ function engine(): HTMLAudioElement {
 		if (!player.current) return;
 		const err = audio?.error;
 		player.playing = false;
+		// No `pause` event follows a load that failed, so without this the
+		// notification is left insisting it is playing a file that never
+		// started — with a pause button that does nothing.
+		publish();
 		logEvent(
 			'player',
 			`playback failed (code ${err?.code ?? '?'}${err?.message ? `: ${err.message}` : ''}) — ${player.current?.path ?? 'no file'}`
@@ -213,6 +234,7 @@ function engine(): HTMLAudioElement {
 		window.mtui?.toast(m().player.failed, { kind: 'error' });
 	});
 	wireMediaSession();
+	wireNotification();
 	return audio;
 }
 
@@ -283,6 +305,7 @@ export function stop() {
 		navigator.mediaSession.metadata = null;
 		navigator.mediaSession.playbackState = 'none';
 	}
+	hideMedia();
 }
 
 export function expand() {
@@ -321,11 +344,13 @@ export function previous() {
 export function toggleShuffle() {
 	player.shuffle = !player.shuffle;
 	persistPrefs();
+	publish();
 }
 
 export function setRepeat(mode: RepeatMode) {
 	player.repeat = mode;
 	persistPrefs();
+	publish();
 }
 
 export function setVolume(value: number) {
@@ -407,4 +432,96 @@ function wireMediaSession() {
 			// action not supported on this platform — fine
 		}
 	}
+}
+
+/* ---- The Android notification player ----
+
+   Everything above is the web API, and on Android it publishes nothing: its
+   WebView implements `navigator.mediaSession` and hands none of it to the
+   system, so the phone — where a notification player matters most — showed no
+   controls at all. `$lib/media-notification` pushes the same picture over to a
+   native MediaSession instead, and the buttons come back here.
+
+   Position is deliberately not pushed on every tick. Android extrapolates the
+   playhead from the timestamp of the last state it was given, so the handful
+   of moments that genuinely change the picture — a track, a pause, a seek, a
+   length becoming known — are enough, and a per-frame IPC is not. */
+
+/**
+ * A number Rust will accept. `JSON.stringify` writes NaN and Infinity as
+ * `null`, which fails the command's deserialisation outright — and a media
+ * element hands out both: a duration is NaN before metadata arrives and
+ * Infinity for anything of unknown length.
+ */
+function seconds(value: number | undefined): number {
+	return Number.isFinite(value) ? (value as number) : 0;
+}
+
+function publish() {
+	const entry = player.current;
+	if (!entry) return hideMedia();
+	const list = playable();
+	publishMedia({
+		title: entry.title,
+		artist: entry.artist ?? 'mp3fy',
+		album: entry.format.toUpperCase(),
+		artwork: entry.thumbnail,
+		playing: player.playing,
+		position: seconds(audio?.currentTime),
+		duration: seconds(player.duration),
+		shuffle: player.shuffle,
+		repeat: player.repeat,
+		// One track is still a queue; it is just one you cannot step out of.
+		canNext: list.length > 1,
+		canPrevious: list.length > 1
+	});
+}
+
+/** Play, without the ambiguity of a toggle arriving from somewhere else. */
+function resume() {
+	if (!audio || !audio.src) return;
+	if (audio.paused) begin(audio);
+}
+
+/** The order the player's own options menu offers, cycled by one button. */
+function nextRepeat(mode: RepeatMode): RepeatMode {
+	return mode === 'off' ? 'all' : mode === 'all' ? 'one' : 'off';
+}
+
+function wireNotification() {
+	onMediaAction(({ action, position }: MediaAction) => {
+		switch (action) {
+			case 'play':
+				resume();
+				break;
+			case 'pause':
+				audio?.pause();
+				break;
+			case 'toggle':
+				toggle();
+				break;
+			case 'next':
+				next();
+				break;
+			case 'previous':
+				previous();
+				break;
+			// Swiping the notification away is how a paused player is dismissed
+			// from outside the app — the same thing the ✕ does inside it.
+			case 'stop':
+				stop();
+				break;
+			case 'seek':
+				if (position != null) seek(position);
+				break;
+			case 'shuffle':
+				toggleShuffle();
+				break;
+			case 'repeat':
+				setRepeat(nextRepeat(player.repeat));
+				break;
+			default:
+				logEvent('player', `unknown media action: ${action}`);
+		}
+	});
 }
