@@ -180,7 +180,7 @@ Verify with the status bar in the shot: `adb exec-out screencap -p` and check
 that nothing paints in the top 24dp. See
 `fixes/MTUI-SAFE-AREA-FIX-PROMPT.md` for the upstream suggestion.
 
-## Why playback reads the whole file first
+## Why playback goes through a loopback HTTP server
 
 `<audio src=convertFileSrc(path)>` is the obvious way to play a local file and
 it is broken here — quietly, and in a way that reads as a bad download.
@@ -205,14 +205,79 @@ at the same point, and **sooner for a higher bitrate** — 1 MB of 320 kbps is
 seek needs a range that never comes. With a file whose `moov` atom sits at the
 end, the element never even got a duration and retried in a loop.
 
-`$lib/player` therefore fetches the file once, without a Range header, and
-plays it from a `blob:` URL — in memory, seekable by definition. Over
-`INLINE_LIMIT` (128 MB) it falls back to streaming and says so in the logs,
-because that path is still the broken one.
-
 **This is not a player problem.** Swapping in howler.js, wavesurfer or any
 other library changes nothing: they all wrap the same media element and would
 be handed the same truncated megabyte.
+
+### The first fix, and why it had to go
+
+`$lib/player` used to `fetch` the file once without a Range header — which
+takes the protocol's whole-file branch, 3.19 MB in 80 ms — and play it from a
+`blob:` URL: in memory, seekable by definition.
+
+That is correct for a three-minute song and hopeless for anything long. An hour
+of recitation is a couple of hundred megabytes of webview heap before the first
+sample, and the guard against it (`INLINE_LIMIT`, 128 MB) fell back to the
+truncating path, so the reward for a long file was
+`PIPELINE_ERROR_READ: FFmpegDemuxer: data source error` and a log line
+admitting it. No amount of tuning that limit helps: reading a file to play it
+is the wrong shape.
+
+### What it does now
+
+`src-tauri/src/media.rs` binds an HTTP server to `127.0.0.1:0` at startup and
+`media_url` hands the frontend a URL on it:
+
+```
+http://127.0.0.1:<ephemeral>/<secret>/file?path=<percent-encoded>
+```
+
+`<audio src>` points straight at that. It is not a custom scheme, so it does
+not go through `shouldInterceptRequest` at all — it is an ordinary HTTP request
+through the platform's own network stack, which every webview including
+Android's already knows how to stream and seek. The server answers `Range`
+properly (`bytes=0-`, `bytes=100-199`, `bytes=-500` for a trailing `moov`
+atom, `416` past the end) and copies through a 64 KiB buffer, so a ten-hour
+file costs the same memory as a ten-second one. It also sets `Content-Type`
+from the extension, which is the other thing the asset protocol got wrong — it
+sniffed `audio/m4a`, a type that is not registered and that a media element
+refuses outright.
+
+Two details that are not optional:
+
+- **The secret, and the allow-list behind it.** A loopback socket on Android is
+  reachable by every other app on the phone. Without the right path the server
+  returns 404 and nothing else, and the port is ephemeral so there is nothing
+  to guess at either. The secret is not the only gate, though: a secret is one
+  leak away from being an arbitrary-file-read primitive, so the server opens
+  only paths `media_url` has already handed out a URL for — one entry per track
+  played this session, and 404 for everything else on the disk.
+- **Cleartext.** `http://127.0.0.1` is cleartext like any other `http`, and a
+  release build sets `android:usesCleartextTraffic="false"`.
+  `res/xml/network_security_config.xml` permits loopback and only loopback;
+  the debug variant in `src/debug/res/xml/` replaces it with one that permits
+  everything, because `tauri android dev` serves the frontend over plain http
+  from the machine's LAN address. A network security config overrides the
+  manifest attribute from API 24 on, so that file — not the placeholder — is
+  what decides.
+
+Measured on the emulator, release APK, against a 40 MB / 23:06 mp3 — the
+buffered ranges are the whole argument:
+
+| After | `currentTime` | `buffered` |
+| --- | --- | --- |
+| 2 s of playback | 1.9 | `[0–108s]` |
+| seeking to 20:00 | 1202.8, still playing | `[0–108s]`, `[1191–1313s]` |
+
+Two windows, not one file. The old path had either 1 MB or all 40 of them.
+Refusing what it should also holds up there: the registered file loads, a
+sibling in the same folder that the player never asked for is
+`MEDIA_ERR_SRC_NOT_SUPPORTED`, and so is `/system/etc/hosts` — with the right
+secret in all three URLs.
+
+The range arithmetic is covered by the only tests in the tree
+(`media.rs`, run by `make check`), because getting it wrong looks exactly like
+the bug it replaced.
 
 ## The notification player
 

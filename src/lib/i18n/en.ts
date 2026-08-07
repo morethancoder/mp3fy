@@ -16,8 +16,10 @@ export const en = {
 	},
 
 	home: {
-		title: 'mp3fy',
-		subtitle: 'Paste a video link and get an audio file, converted on your device.',
+		// Not the app name: the header already carries that, and a screen whose
+		// heading repeats it says nothing. The title is what the screen is for.
+		title: 'Paste a link, get an audio file',
+		subtitle: 'Nothing leaves your device — the conversion happens here.',
 		videoLink: 'Video link',
 		linkPlaceholder: 'https://…',
 		paste: 'Paste',

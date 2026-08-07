@@ -3,6 +3,7 @@ mod android_engine;
 mod convert;
 mod download;
 mod logs;
+mod media;
 mod platform;
 mod tools;
 
@@ -58,10 +59,26 @@ pub fn run() {
             platform::safe_area_insets,
             platform::show_media_notification,
             platform::hide_media_notification,
+            media::media_url,
             logs::get_logs,
             logs::log_event
         ])
         .setup(|_app| {
+            // The player streams over loopback rather than through the asset
+            // protocol, which cannot stream on Android and read whole files
+            // into the webview's heap everywhere else. Failing to bind is not
+            // fatal — `media_url` then errors and the player falls back to the
+            // old truncating path, with both facts in the logs.
+            {
+                use tauri::Manager as _;
+                match media::start() {
+                    Ok(server) => {
+                        _app.manage(server);
+                    }
+                    Err(e) => logs::log("player", format!("no media server: {e}")),
+                }
+            }
+
             // Windows and Linux only know the app owns `mp3fy://` once it is
             // written to the registry / the desktop database. An installer
             // does that, but a dev build or an unpacked AppImage never was

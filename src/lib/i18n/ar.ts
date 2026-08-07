@@ -11,8 +11,8 @@ export const ar: Messages = {
 	},
 
 	home: {
-		title: 'mp3fy',
-		subtitle: 'الصق رابط فيديو واحصل على ملف صوتي، يُحوَّل على جهازك.',
+		title: 'الصق رابطًا، واحصل على ملف صوتي',
+		subtitle: 'لا شيء يغادر جهازك — التحويل يجري هنا.',
 		videoLink: 'رابط الفيديو',
 		linkPlaceholder: 'https://…',
 		paste: 'لصق',

@@ -41,13 +41,22 @@ trimmed: no Node-server build target, desktop first.
   `timeupdate`; a pause waits before demoting the service, because a track
   ending pauses too and Android will not re-promote a background service.
   "The notification player" in `docs/android.md`. Local
-  files are read once with a plain `fetch` (no Range header) and played from a
-  `blob:` URL — **never point the element at `convertFileSrc` directly**: the
-  asset protocol caps a range response at 1 MB and Android's webview cannot
-  ask for the next one, so playback stopped a fixed number of seconds in and
-  seeking hung. "Why playback reads the whole file first" in `docs/android.md`;
-  it is not a player-library problem, and no JS player fixes it. The path still
-  has to be in the asset protocol scope in tauri.conf.json. Every `play()` goes through `begin()`, which swallows the
+  files are streamed over HTTP from a loopback server in Rust
+  (`src-tauri/src/media.rs`, URL from the `media_url` command) —
+  **never point the element at `convertFileSrc` directly**: the asset protocol
+  caps a range response at 1 MB and Android's webview cannot ask for the next
+  one, so playback stopped a fixed number of seconds in and seeking hung. The
+  first fix for that read the whole file into a `blob:` URL, which an hour of
+  recitation does not survive; the server does Range properly and buffers 64 KB
+  at a time. Its URLs carry a secret because a loopback port on Android is
+  reachable by every app on the phone, and it serves only paths `media_url`
+  handed out — a secret is one leak away from arbitrary file read. Cleartext
+  to 127.0.0.1 is what
+  `res/xml/network_security_config.xml` (plus the debug override in
+  `src/debug/res/xml/`) exists to permit. "Why playback goes through a loopback
+  HTTP server" in `docs/android.md`; it was never a player-library problem, and
+  no JS player fixes it. The asset-protocol scope in tauri.conf.json is now only
+  the fallback path. Every `play()` goes through `begin()`, which swallows the
   AbortError a track change always produces (it was filling the Logs screen)
   and logs everything else; an `error` listener names the file that would not
   decode, because "the player just stopped" had no other trace. Shuffle/repeat/volume persist to `mp3fy-player` — there is
@@ -140,7 +149,9 @@ trimmed: no Node-server build target, desktop first.
 
 The Makefile is the CLI (one-word targets, `##` self-docs, run bare `make`
 for the list): `make dev` runs the desktop app, `make web` just the UI in a
-browser, `make check` type-checks both sides, `make build` bundles,
+browser, `make check` type-checks both sides and runs `cargo test` (the media
+server's range arithmetic is the only thing here with tests, and the only
+hand-written wire protocol), `make build` bundles,
 `make release` bumps/tags/pushes and lets `.github/workflows/release.yml`
 build macOS (universal), Windows and Linux bundles onto a GitHub Release
 (`docs/releasing.md`). Longer flows live in `scripts/<verb>.sh` sourcing

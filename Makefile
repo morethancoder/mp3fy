@@ -28,6 +28,7 @@ android: ## build the Android APK (MODE=debug|release|dev)
 check: ## type-check the frontend and the Rust backend
 	@pnpm check
 	@cd src-tauri && cargo check
+	@cd src-tauri && cargo test --lib
 
 icons: ## regenerate the app icon set from src-tauri/app-icon.png
 	@bash scripts/icons.sh

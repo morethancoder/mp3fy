@@ -7,10 +7,9 @@
  * `$lib/media-notification` is how this module drives it.
  */
 
-import { convertFileSrc } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { isTauri, logEvent } from './api';
 import { history, incrementPlays, type HistoryEntry } from './history.svelte';
-import { mimeFor } from './format';
 import { m } from './i18n.svelte';
 import {
 	hideMedia,
@@ -112,70 +111,38 @@ function begin(a: HTMLAudioElement) {
    webview then asks for the next range, and the next; Android's does not. Its
    custom-scheme responses come back through `shouldInterceptRequest` as a
    single WebResourceResponse, so the 1 MB is everything the player will ever
-   get.
+   get: playback stopped partway with the transport still claiming to play,
+   always at the same place, and seeking past it hung forever.
 
-   What that looks like: playback stops partway with the transport still
-   claiming to play, always at the same place, and sooner for a file with a
-   higher bitrate — 1 MB of 320 kbps is 25 seconds, 1 MB of 128 kbps is 64.
-   Dragging the seek bar past it hangs forever, since the seek needs a range
-   that never arrives. Measured on a 3.19 MB file: the element received
-   1,024,000 bytes and reported a duration of zero.
+   The answer used to be to read the file in full and play it from a `blob:`
+   URL — correct for a three-minute song, hopeless for an hour of recitation,
+   which is a couple of hundred megabytes of webview heap before the first
+   sample and a `PIPELINE_ERROR_READ` when it does not fit.
 
-   So the file is read once, in full, and played from memory. A plain fetch
-   sends no Range header, which takes the protocol's whole-file branch (3.19 MB
-   in 80 ms from local storage), and a blob URL is seekable everywhere by
-   definition. It is also why seeking now works at all. */
-
-/** Beyond this, memory matters more than seeking; stream it and hope. */
-const INLINE_LIMIT = 128 * 1024 * 1024;
-
-/** The blob URL backing the element right now — revoked when it is replaced. */
-let objectUrl: string | null = null;
+   So the bytes now come over HTTP from a loopback server in Rust
+   (`src-tauri/src/media.rs`), which speaks Range properly. That is not a
+   custom scheme, so it goes through the platform's own network stack, and
+   every webview — Android's included — streams it and seeks by asking for the
+   range it wants. Nothing is held in memory. */
 
 /** Bumped by every load, stop included: a slow read must not win a later race. */
 let attaching = 0;
 
-function release() {
-	if (!objectUrl) return;
-	URL.revokeObjectURL(objectUrl);
-	objectUrl = null;
-}
-
 async function load(a: HTMLAudioElement, entry: HistoryEntry) {
 	const token = ++attaching;
-	const url = convertFileSrc(entry.path);
-
-	// An hour of FLAC is not going in a Blob. Streaming it is the broken path
-	// above, so say so in the logs rather than let it look like a new bug.
-	if ((entry.size ?? 0) > INLINE_LIMIT) {
-		logEvent('player', `${entry.path} is too large to read into memory — streaming it`);
-		release();
-		a.src = url;
-		begin(a);
-		return;
-	}
-
+	let src: string;
 	try {
-		const bytes = await fetch(url).then((res) => {
-			if (!res.ok) throw new Error(`the asset protocol answered ${res.status}`);
-			return res.blob();
-		});
-		if (token !== attaching) return; // another track was picked meanwhile
-		release();
-		// Re-typed from the extension: what the protocol sniffs is sometimes a
-		// type no media element knows.
-		objectUrl = URL.createObjectURL(
-			new Blob([bytes], { type: mimeFor(entry.path) ?? bytes.type })
-		);
-		a.src = objectUrl;
-		begin(a);
+		src = await invoke<string>('media_url', { path: entry.path });
 	} catch (e) {
-		if (token !== attaching) return;
-		logEvent('player', `could not read ${entry.path} (${e}) — playing it directly`);
-		release();
-		a.src = url;
-		begin(a);
+		// Only the server streams. Falling back to the asset protocol keeps
+		// desktop working and gets Android its first megabyte — enough to hear
+		// that something is wrong, with the reason sitting above it in the log.
+		logEvent('player', `no stream for ${entry.path} (${e}) — using the asset protocol`);
+		src = convertFileSrc(entry.path);
 	}
+	if (token !== attaching) return; // another track was picked meanwhile
+	a.src = src;
+	begin(a);
 }
 
 function engine(): HTMLAudioElement {
@@ -292,9 +259,8 @@ export function stop() {
 	if (audio) {
 		audio.pause();
 		audio.removeAttribute('src');
-		audio.load(); // drop the decoded buffer, not just the playhead
+		audio.load(); // drop the buffer and the connection, not just the playhead
 	}
-	release();
 	player.current = null;
 	player.playing = false;
 	player.currentTime = 0;

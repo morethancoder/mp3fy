@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The player streams its files from a loopback HTTP server (media.rs), and a
+  release build sets android:usesCleartextTraffic="false" — which would block
+  it, since http://127.0.0.1 is cleartext like any other http. This permits
+  exactly that one destination and nothing else: everything the app reaches off
+  the device still has to be TLS.
+
+  The debug variant (src/debug/res/xml/) replaces this file with one that
+  permits everything, because `tauri android dev` serves the frontend over
+  plain http from the machine's LAN address.
+
+  Note that android:usesCleartextTraffic is ignored from API 24 on when a
+  network security config is present, so this file — not the manifest
+  placeholder — is what decides.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

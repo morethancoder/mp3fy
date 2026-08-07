@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug only, and it overrides src/main's copy of this file by having the same
+  name. `tauri android dev` serves the frontend over plain http from the
+  machine's LAN address, so a debug build has to allow cleartext to anywhere —
+  which is what the manifest placeholder used to do on its own, before a
+  network security config existed to override it.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
