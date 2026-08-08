@@ -125,9 +125,12 @@ export const en = {
 		options: 'Playback options',
 		shuffle: 'Shuffle',
 		repeat: 'Repeat',
+		// "Off" still walks the rest of the list; this is the one that ends in
+		// silence, so it has to say so rather than be a second kind of off.
 		repeatOff: 'Off',
 		repeatAll: 'Repeat all',
 		repeatOne: 'Repeat one',
+		repeatStop: 'Stop after this track',
 		volume: 'Volume',
 		swipeHint: 'Swipe sideways to change track, down to minimise',
 		failed: 'This file could not be played'

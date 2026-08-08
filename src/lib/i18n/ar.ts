@@ -109,6 +109,7 @@ export const ar: Messages = {
 		repeatOff: 'إيقاف',
 		repeatAll: 'تكرار الكل',
 		repeatOne: 'تكرار المقطع',
+		repeatStop: 'التوقّف بعد هذا المقطع',
 		volume: 'مستوى الصوت',
 		swipeHint: 'اسحب يميناً أو يساراً لتغيير المقطع، وللأسفل لتصغير المشغّل',
 		failed: 'تعذّر تشغيل هذا الملف'

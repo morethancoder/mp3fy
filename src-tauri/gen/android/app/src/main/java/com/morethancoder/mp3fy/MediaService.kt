@@ -308,6 +308,10 @@ class MediaService : Service() {
     private fun repeatIcon(state: MediaArgs) = when (state.repeat) {
         "one" -> R.drawable.ic_media_repeat_one
         "all" -> R.drawable.ic_media_repeat_on
+        // "Stop after this track" has no PlaybackStateCompat repeat mode to
+        // borrow — the session is told NONE, which is true of the looping —
+        // so the icon is the only place the notification can show it.
+        "stop" -> R.drawable.ic_media_repeat_stop
         else -> R.drawable.ic_media_repeat
     }
 

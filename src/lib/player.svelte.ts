@@ -18,7 +18,19 @@ import {
 	type MediaAction
 } from './media-notification';
 
-export type RepeatMode = 'off' | 'all' | 'one';
+/**
+ * What happens when a track ends.
+ *
+ * `off` is not "nothing": it plays the rest of the list and stops at the
+ * bottom. `stop` is the one that really does nothing — one track, then
+ * silence — which is what you want for a lecture or a recitation you put on
+ * deliberately, and what "off" cannot express while it is still walking a
+ * queue.
+ */
+export type RepeatMode = 'off' | 'all' | 'one' | 'stop';
+
+/** The order the menu lists them in, and the order the one button cycles. */
+export const REPEAT_MODES: readonly RepeatMode[] = ['off', 'all', 'one', 'stop'];
 
 /** Toggles worth remembering between launches — not the transport state. */
 const PREFS_KEY = 'mp3fy-player';
@@ -35,7 +47,7 @@ function loadPrefs(): Prefs {
 	try {
 		const raw = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}');
 		const prefs = { ...defaults, ...raw };
-		if (prefs.repeat !== 'all' && prefs.repeat !== 'one') prefs.repeat = 'off';
+		if (!REPEAT_MODES.includes(prefs.repeat)) prefs.repeat = 'off';
 		if (typeof prefs.volume !== 'number' || !Number.isFinite(prefs.volume)) prefs.volume = 1;
 		prefs.volume = Math.max(0, Math.min(1, prefs.volume));
 		return prefs;
@@ -176,6 +188,15 @@ function engine(): HTMLAudioElement {
 		if (player.repeat === 'one') {
 			seek(0);
 			begin(audio!);
+			return;
+		}
+		// The whole point of `stop`: the queue is not walked. The pause is by
+		// hand because reaching the end does not pause anything — `ended` fires
+		// with `paused` still false, and without this the transport and the
+		// notification would both go on claiming to play silence. Same reason
+		// `step` pauses when it walks off the end of the list.
+		if (player.repeat === 'stop') {
+			audio!.pause();
 			return;
 		}
 		step(1, true);
@@ -449,9 +470,14 @@ function resume() {
 	if (audio.paused) begin(audio);
 }
 
-/** The order the player's own options menu offers, cycled by one button. */
+/**
+ * The notification has one repeat button for four modes, so it cycles them —
+ * in the order the in-app menu lists them, or pressing the same thing in two
+ * places would walk two different ways.
+ */
 function nextRepeat(mode: RepeatMode): RepeatMode {
-	return mode === 'off' ? 'all' : mode === 'all' ? 'one' : 'off';
+	const i = REPEAT_MODES.indexOf(mode);
+	return REPEAT_MODES[(i + 1) % REPEAT_MODES.length];
 }
 
 function wireNotification() {

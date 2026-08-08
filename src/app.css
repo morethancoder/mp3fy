@@ -138,6 +138,16 @@ body .accordion summary:hover {
 	background: var(--surface-3);
 }
 
+/* 9. A popover menu has no height of its own to fall back on, and the
+   player's is now shuffle plus four repeat modes — tall enough to run off
+   the bottom of a phone held sideways, taking the last mode with it. Cap it
+   at the window and let it scroll rather than let an item become
+   unreachable. */
+body .menu[popover] {
+	max-block-size: calc(100dvh - var(--safe-top-css) - var(--safe-bottom-css) - var(--sp-32));
+	overflow-y: auto;
+}
+
 /* 3. keep content clear of the cutout when a phone is turned sideways */
 body.shell .screen-stack {
 	padding-inline: max(var(--pad), var(--safe-left-css), var(--safe-right-css));

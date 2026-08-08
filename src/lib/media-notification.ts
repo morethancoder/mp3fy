@@ -35,7 +35,7 @@ export interface MediaState {
 	position: number;
 	duration: number;
 	shuffle: boolean;
-	repeat: 'off' | 'all' | 'one';
+	repeat: 'off' | 'all' | 'one' | 'stop';
 	canNext: boolean;
 	canPrevious: boolean;
 }

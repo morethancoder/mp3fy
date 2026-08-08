@@ -309,11 +309,17 @@ functions the in-app player uses, so "next" means one thing in this app.
 backgrounded app is a candidate for being killed, and being killed mid-track
 is what a music app may not do.
 
-What is on it: cover art, title, artist, previous / play-pause / next, shuffle
-and the three repeat modes, a scrubber (Android draws one once the metadata
-carries a real duration), and tapping anywhere that is not a button opens the
-app — the launcher intent specifically, so it lands on the running task and
-not on a second copy, and is not mistaken for a shared link.
+What is on it: cover art, title, artist, previous / play-pause / next, shuffle,
+repeat, a scrubber (Android draws one once the metadata carries a real
+duration), and tapping anywhere that is not a button opens the app — the
+launcher intent specifically, so it lands on the running task and not on a
+second copy, and is not mistaken for a shared link.
+
+Repeat is one button cycling four modes, because only its icon can carry the
+state. `PlaybackStateCompat` has a mode for three of them; "stop after this
+track" is not one, so the session is told `REPEAT_MODE_NONE` — true of the
+looping, which is all the session describes — and `ic_media_repeat_stop` says
+the rest.
 
 Four things that must stay true:
 

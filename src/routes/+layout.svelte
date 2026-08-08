@@ -28,6 +28,7 @@
 		toggleShuffle,
 		setRepeat,
 		setVolume,
+		REPEAT_MODES,
 		type RepeatMode
 	} from '$lib/player.svelte';
 	import { download, initDownloads, keepExisting, redownload } from '$lib/downloads.svelte';
@@ -45,14 +46,15 @@
 		seek(Number((e.currentTarget as HTMLInputElement).value));
 	}
 
-	const REPEATS: RepeatMode[] = ['off', 'all', 'one'];
-
 	function repeatLabel(mode: RepeatMode): string {
+		const labels = m().player;
 		return mode === 'one'
-			? m().player.repeatOne
+			? labels.repeatOne
 			: mode === 'all'
-				? m().player.repeatAll
-				: m().player.repeatOff;
+				? labels.repeatAll
+				: mode === 'stop'
+					? labels.repeatStop
+					: labels.repeatOff;
 	}
 
 	function onVolume(e: Event) {
@@ -436,7 +438,7 @@
 				{/if}
 			</button>
 			<span class="menu-label t-label">{m().player.repeat}</span>
-			{#each REPEATS as mode (mode)}
+			{#each REPEAT_MODES as mode (mode)}
 				<button
 					class="menu-item"
 					onclick={() => setRepeat(mode)}
@@ -445,6 +447,10 @@
 				>
 					{#if mode === 'one'}
 						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/></svg>
+					{:else if mode === 'stop'}
+						<!-- The repeat loop with a stop square inside it, the way
+						     repeat-one carries a 1. -->
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><rect x="10" y="10" width="4" height="4" fill="currentColor" stroke="none"/></svg>
 					{:else if mode === 'all'}
 						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
 					{:else}

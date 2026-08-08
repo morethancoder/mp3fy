@@ -69,8 +69,11 @@ trimmed: no Node-server build target, desktop first.
   used to change track, which left the dismissal gesture every phone teaches
   landing on the previous song. Pointer capture is required or the cover
   starts a native image drag, and both drag surfaces set `user-select: none`. Its top corner holds the only two non-transport
-  controls: a volume popover and one options menu (shuffle + the three repeat
-  modes) — the volume slider is vertical (`writing-mode: vertical-lr` +
+  controls: a volume popover and one options menu (shuffle + the four repeat
+  modes — `off` walks the rest of the list, `stop` ends after this track, and
+  they are not the same thing; `REPEAT_MODES` in player.svelte.ts is the order
+  both the menu and the notification's one cycling button use) — the volume
+  slider is vertical (`writing-mode: vertical-lr` +
   `direction: rtl`, physical width/height on purpose) and its popover needs a
   definite width or menu.js's `left` plus the UA's `right: 0` stretch it across
   the window. Collapsing leaves a mini player docked as a bottom drawer above
